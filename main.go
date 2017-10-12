@@ -205,7 +205,7 @@ func main() {
 
 	rootCmd.AddCommand(createCmd, destroyCmd, listCmd, statusCmd, syncCmd)
 
-	createCmd.Flags().DurationVarP(&lifetime, "lifetime", "l", 24*time.Hour, "Lifetime of the cluster")
+	createCmd.Flags().DurationVarP(&lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 3, "Number of nodes")
 	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 

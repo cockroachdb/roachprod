@@ -15,6 +15,7 @@ const (
 	domain      = "@cockroachlabs.com"
 	zone        = "us-east1-b"
 	machineType = "n1-standard-4"
+	vmUser      = "cockroach"
 )
 
 func runJSONCommand(args []string, parsed interface{}) error {
@@ -44,12 +45,6 @@ type jsonVM struct {
 		}
 	}
 }
-
-type VMList []jsonVM
-
-func (vl VMList) Len() int           { return len(vl) }
-func (vl VMList) Swap(i, j int)      { vl[i], vl[j] = vl[j], vl[i] }
-func (vl VMList) Less(i, j int) bool { return vl[i].Name < vl[j].Name }
 
 func listVMs() ([]jsonVM, error) {
 	args := []string{"compute", "instances", "list", "--project", project, "--format", "json"}

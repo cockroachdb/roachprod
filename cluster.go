@@ -14,6 +14,7 @@ type Cloud struct {
 	// Individual "bad" instances by category.
 	InvalidName  []jsonVM
 	NoExpiration []jsonVM
+	BadNetwork   []jsonVM
 }
 
 func newCloud() *Cloud {
@@ -21,6 +22,7 @@ func newCloud() *Cloud {
 		Clusters:     make(map[string]*Cluster),
 		InvalidName:  make([]jsonVM, 0),
 		NoExpiration: make([]jsonVM, 0),
+		BadNetwork:   make([]jsonVM, 0),
 	}
 }
 
@@ -49,9 +51,22 @@ func (c *Cluster) PrintDetails() {
 		fmt.Printf("%s remaining\n", l)
 	}
 	for _, vm := range c.VMs {
-		fmt.Printf("  %s\n", vm.Name)
+		fmt.Printf("  %s\t%s.%s.%s\t%s\t%s\n", vm.Name, vm.Name, zone, project, vm.PrivateIP, vm.PublicIP)
 	}
 }
+
+type VM struct {
+	Name       string
+	Expiration time.Time
+	PrivateIP  string
+	PublicIP   string
+}
+
+type VMList []VM
+
+func (vl VMList) Len() int           { return len(vl) }
+func (vl VMList) Swap(i, j int)      { vl[i], vl[j] = vl[j], vl[i] }
+func (vl VMList) Less(i, j int) bool { return vl[i].Name < vl[j].Name }
 
 func namesFromVMName(name string) (string, string, error) {
 	parts := strings.Split(name, "-")
@@ -70,12 +85,14 @@ func listCloud() (*Cloud, error) {
 	cloud := newCloud()
 
 	for _, vm := range vms {
+		// Parse cluster/user from VM name.
 		userName, clusterName, err := namesFromVMName(vm.Name)
 		if err != nil {
 			cloud.InvalidName = append(cloud.InvalidName, vm)
 			continue
 		}
 
+		// Check "lifetime" label.
 		lifetime, ok := vm.Labels["lifetime"]
 		if !ok {
 			cloud.NoExpiration = append(cloud.NoExpiration, vm)
@@ -89,17 +106,35 @@ func listCloud() (*Cloud, error) {
 		}
 		expiration := vm.CreationTimestamp.Add(dur)
 
+		// Check private/public IPs.
+		if len(vm.NetworkInterfaces) == 0 || len(vm.NetworkInterfaces[0].AccessConfigs) == 0 {
+			cloud.BadNetwork = append(cloud.BadNetwork, vm)
+			continue
+		}
+		privateIP := vm.NetworkInterfaces[0].NetworkIP
+		publicIP := vm.NetworkInterfaces[0].AccessConfigs[0].NatIP
+
+		if len(privateIP) == 0 || len(publicIP) == 0 {
+			cloud.BadNetwork = append(cloud.BadNetwork, vm)
+			continue
+		}
+
 		if _, ok := cloud.Clusters[clusterName]; !ok {
 			cloud.Clusters[clusterName] = &Cluster{
 				Name:       clusterName,
 				User:       userName,
 				Expiration: expiration,
-				VMs:        make([]jsonVM, 0),
+				VMs:        make([]VM, 0),
 			}
 		}
 
 		c := cloud.Clusters[clusterName]
-		c.VMs = append(c.VMs, vm)
+		c.VMs = append(c.VMs, VM{
+			Name:       vm.Name,
+			Expiration: expiration,
+			PrivateIP:  privateIP,
+			PublicIP:   publicIP,
+		})
 		if expiration.Before(c.Expiration) {
 			c.Expiration = expiration
 		}
@@ -115,7 +150,8 @@ func listCloud() (*Cloud, error) {
 func createCluster(name string, nodes int, lifetime time.Duration) error {
 	vmNames := make([]string, nodes, nodes)
 	for i := 0; i < nodes; i++ {
-		vmNames[i] = fmt.Sprintf("%s-%0.4d", name, i)
+		// Start instance indexing at 1.
+		vmNames[i] = fmt.Sprintf("%s-%0.4d", name, i+1)
 	}
 
 	return createVMs(vmNames, lifetime)
