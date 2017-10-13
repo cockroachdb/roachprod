@@ -9,8 +9,8 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "roachperf [command] (flags)",
-	Short: "roachperf tool for manipulating test clusters",
+	Use:   "roachprod [command] (flags)",
+	Short: "roachprod tool for manipulating test clusters",
 	Long: `
 roachprod is a tool for manipulating test clusters, allowing easy creating,
 destroying and wiping of clusters along with running load generators.
