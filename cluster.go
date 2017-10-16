@@ -12,17 +12,17 @@ const vmNameFormat = "user-<clusterid>-<nodeid>"
 type Cloud struct {
 	Clusters map[string]*Cluster
 	// Individual "bad" instances by category.
-	InvalidName  []jsonVM
-	NoExpiration []jsonVM
-	BadNetwork   []jsonVM
+	InvalidName  JsonVMList
+	NoExpiration JsonVMList
+	BadNetwork   JsonVMList
 }
 
 func newCloud() *Cloud {
 	return &Cloud{
 		Clusters:     make(map[string]*Cluster),
-		InvalidName:  make([]jsonVM, 0),
-		NoExpiration: make([]jsonVM, 0),
-		BadNetwork:   make([]jsonVM, 0),
+		InvalidName:  make(JsonVMList, 0),
+		NoExpiration: make(JsonVMList, 0),
+		BadNetwork:   make(JsonVMList, 0),
 	}
 }
 

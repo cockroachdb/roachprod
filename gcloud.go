@@ -53,6 +53,16 @@ type jsonVM struct {
 	}
 }
 
+type JsonVMList []jsonVM
+
+func (vms JsonVMList) Names() []string {
+	ret := make([]string, len(vms))
+	for i, vm := range vms {
+		ret[i] = vm.Name
+	}
+	return ret
+}
+
 func listVMs() ([]jsonVM, error) {
 	args := []string{"compute", "instances", "list", "--project", project, "--format", "json"}
 	vms := make([]jsonVM, 0)
