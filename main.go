@@ -18,10 +18,11 @@ destroying and wiping of clusters along with running load generators.
 }
 
 var (
-	lifetime time.Duration
 	numNodes int
 	username string
 )
+
+var createVMOpts VMOpts
 
 var createCmd = &cobra.Command{
 	Use:   "create <cluster id>",
@@ -62,7 +63,7 @@ var createCmd = &cobra.Command{
 			return fmt.Errorf("cluster %s already exists", clusterName)
 		}
 
-		if err := createCluster(clusterName, numNodes, lifetime); err != nil {
+		if err := createCluster(clusterName, numNodes, createVMOpts); err != nil {
 			return err
 		}
 
@@ -205,7 +206,9 @@ func main() {
 
 	rootCmd.AddCommand(createCmd, destroyCmd, listCmd, statusCmd, syncCmd)
 
-	createCmd.Flags().DurationVarP(&lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
+	createCmd.Flags().DurationVarP(&createVMOpts.Lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
+	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", false, "Use local SSD")
+	createCmd.Flags().StringVar(&createVMOpts.MachineType, "machine-type", "n1-standard-4", "Machine type (see https://cloud.google.com/compute/docs/machine-types)")
 	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 3, "Number of nodes")
 	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 
