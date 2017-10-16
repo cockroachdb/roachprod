@@ -70,10 +70,10 @@ func (vl VMList) Less(i, j int) bool { return vl[i].Name < vl[j].Name }
 
 func namesFromVMName(name string) (string, string, error) {
 	parts := strings.Split(name, "-")
-	if len(parts) != 3 {
+	if len(parts) < 3 {
 		return "", "", fmt.Errorf("expected VM name in the form %s, got %s", vmNameFormat, name)
 	}
-	return parts[0], parts[0] + "-" + parts[1], nil
+	return parts[0], strings.Join(parts[:len(parts)-1], "-"), nil
 }
 
 func listCloud() (*Cloud, error) {
@@ -147,14 +147,14 @@ func listCloud() (*Cloud, error) {
 	return cloud, nil
 }
 
-func createCluster(name string, nodes int, lifetime time.Duration) error {
+func createCluster(name string, nodes int, opts VMOpts) error {
 	vmNames := make([]string, nodes, nodes)
 	for i := 0; i < nodes; i++ {
 		// Start instance indexing at 1.
 		vmNames[i] = fmt.Sprintf("%s-%0.4d", name, i+1)
 	}
 
-	return createVMs(vmNames, lifetime)
+	return createVMs(vmNames, opts)
 }
 
 func destroyCluster(c *Cluster) error {
