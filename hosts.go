@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"os/user"
 	"path"
 	"path/filepath"
 
@@ -26,7 +27,8 @@ func syncHosts(cloud *Cloud) error {
 	hd := os.ExpandEnv(defaultHostDir)
 
 	// We need the username used to log into instances.
-	account, err := findActiveAccount()
+	// gcloud uses the local username rather than the account username.
+	user, err := user.Current()
 	if err != nil {
 		log.Printf("skipping hosts config due to bad username: %v", err)
 		return nil
@@ -38,7 +40,7 @@ func syncHosts(cloud *Cloud) error {
 
 		var buf bytes.Buffer
 		for _, vm := range c.VMs {
-			fmt.Fprintf(&buf, "%s@%s\n", account, vm.PublicIP)
+			fmt.Fprintf(&buf, "%s@%s\n", user.Username, vm.PublicIP)
 		}
 
 		if err := ioutil.WriteFile(filename, buf.Bytes(), 0755); err != nil {
