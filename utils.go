@@ -29,6 +29,8 @@ if [ "${disknum}" -eq "0" ]; then
 fi
 
 sudo chmod 777 /mnt/data1
+# sshguard can prevent frequent ssh connections to the same host. Disable it.
+sudo service sshguard stop
 `
 
 // write the startup script to a temp file.
