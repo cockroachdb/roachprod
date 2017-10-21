@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -18,8 +19,10 @@ destroying and wiping of clusters along with running load generators.
 }
 
 var (
-	numNodes int
-	username string
+	numNodes     int
+	username     string
+	destroyAfter time.Duration
+	trackingFile string
 )
 
 var createVMOpts VMOpts
@@ -142,6 +145,15 @@ var listCmd = &cobra.Command{
 		for _, c := range cloud.Clusters {
 			c.PrintDetails()
 		}
+		if len(cloud.InvalidName) > 0 {
+			fmt.Printf("Bad VM names: %s\n", strings.Join(cloud.InvalidName.Names(), " "))
+		}
+		if len(cloud.NoExpiration) > 0 {
+			fmt.Printf("No expiration: %s\n", strings.Join(cloud.NoExpiration.Names(), " "))
+		}
+		if len(cloud.BadNetwork) > 0 {
+			fmt.Printf("Bad network: %s\n", strings.Join(cloud.BadNetwork.Names(), " "))
+		}
 
 		return syncAll(cloud)
 	},
@@ -201,10 +213,24 @@ func syncAll(cloud *Cloud) error {
 	return nil
 }
 
+var monitorCmd = &cobra.Command{
+	Use:   "monitor",
+	Short: "monitor VM status and warn/destroy. Sends email if properly configured.",
+	Long:  ``,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cloud, err := listCloud()
+		if err != nil {
+			return err
+		}
+
+		return monitorClusters(cloud, trackingFile, destroyAfter)
+	},
+}
+
 func main() {
 	cobra.EnableCommandSorting = false
 
-	rootCmd.AddCommand(createCmd, destroyCmd, listCmd, statusCmd, syncCmd)
+	rootCmd.AddCommand(createCmd, destroyCmd, listCmd, monitorCmd, statusCmd, syncCmd)
 
 	createCmd.Flags().DurationVarP(&createVMOpts.Lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", false, "Use local SSD")
@@ -213,6 +239,14 @@ func main() {
 	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 
 	destroyCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
+
+	monitorCmd.Flags().StringVar(&monitorEmailOpts.From, "email-from", "", "Address of the sender")
+	monitorCmd.Flags().StringVar(&monitorEmailOpts.Host, "email-host", "", "SMTP host")
+	monitorCmd.Flags().IntVar(&monitorEmailOpts.Port, "email-port", 587, "SMTP port")
+	monitorCmd.Flags().StringVar(&monitorEmailOpts.User, "email-user", "", "SMTP user")
+	monitorCmd.Flags().StringVar(&monitorEmailOpts.Password, "email-password", "", "SMTP password")
+	monitorCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 12*time.Hour, "Destroy when this much time past expiration")
+	monitorCmd.Flags().StringVar(&trackingFile, "tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
