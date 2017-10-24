@@ -233,9 +233,9 @@ func main() {
 	rootCmd.AddCommand(createCmd, destroyCmd, listCmd, monitorCmd, statusCmd, syncCmd)
 
 	createCmd.Flags().DurationVarP(&createVMOpts.Lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
-	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", false, "Use local SSD")
+	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", true, "Use local SSD")
 	createCmd.Flags().StringVar(&createVMOpts.MachineType, "machine-type", "n1-standard-4", "Machine type (see https://cloud.google.com/compute/docs/machine-types)")
-	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 3, "Number of nodes")
+	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 4, "Number of nodes")
 	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 
 	destroyCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
@@ -245,7 +245,7 @@ func main() {
 	monitorCmd.Flags().IntVar(&monitorEmailOpts.Port, "email-port", 587, "SMTP port")
 	monitorCmd.Flags().StringVar(&monitorEmailOpts.User, "email-user", "", "SMTP user")
 	monitorCmd.Flags().StringVar(&monitorEmailOpts.Password, "email-password", "", "SMTP password")
-	monitorCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 12*time.Hour, "Destroy when this much time past expiration")
+	monitorCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
 	monitorCmd.Flags().StringVar(&trackingFile, "tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
 
 	if err := rootCmd.Execute(); err != nil {
