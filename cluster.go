@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 const vmNameFormat = "user-<clusterid>-<nodeid>"
@@ -29,22 +32,27 @@ func newCloud() *Cloud {
 type Cluster struct {
 	Name string
 	User string
-	// This is the earliest of all VM expirations.
-	Expiration time.Time
-	VMs        VMList
+	// This is the earliest creation and shortest lifetime across VMs.
+	CreatedAt time.Time
+	Lifetime  time.Duration
+	VMs       VMList
 }
 
-func (c *Cluster) Lifetime() time.Duration {
-	return time.Until(c.Expiration)
+func (c *Cluster) ExpiresAt() time.Time {
+	return c.CreatedAt.Add(c.Lifetime)
+}
+
+func (c *Cluster) LifetimeRemaining() time.Duration {
+	return time.Until(c.ExpiresAt())
 }
 
 func (c *Cluster) String() string {
-	return fmt.Sprintf("%s: %d (%s)", c.Name, len(c.VMs), c.Lifetime().Round(time.Second))
+	return fmt.Sprintf("%s: %d (%s)", c.Name, len(c.VMs), c.LifetimeRemaining().Round(time.Second))
 }
 
 func (c *Cluster) PrintDetails() {
 	fmt.Printf("%s: ", c.Name)
-	l := c.Lifetime().Round(time.Second)
+	l := c.LifetimeRemaining().Round(time.Second)
 	if l <= 0 {
 		fmt.Printf("expired %s ago\n", -l)
 	} else {
@@ -56,10 +64,11 @@ func (c *Cluster) PrintDetails() {
 }
 
 type VM struct {
-	Name       string
-	Expiration time.Time
-	PrivateIP  string
-	PublicIP   string
+	Name      string
+	CreatedAt time.Time
+	Lifetime  time.Duration
+	PrivateIP string
+	PublicIP  string
 }
 
 type VMList []VM
@@ -93,18 +102,18 @@ func listCloud() (*Cloud, error) {
 		}
 
 		// Check "lifetime" label.
-		lifetime, ok := vm.Labels["lifetime"]
+		lifetimeStr, ok := vm.Labels["lifetime"]
 		if !ok {
 			cloud.NoExpiration = append(cloud.NoExpiration, vm)
 			continue
 		}
 
-		dur, err := time.ParseDuration(lifetime)
+		lifetime, err := time.ParseDuration(lifetimeStr)
 		if err != nil {
 			cloud.NoExpiration = append(cloud.NoExpiration, vm)
 			continue
 		}
-		expiration := vm.CreationTimestamp.Add(dur)
+		createdAt := vm.CreationTimestamp
 
 		// Check private/public IPs.
 		if len(vm.NetworkInterfaces) == 0 || len(vm.NetworkInterfaces[0].AccessConfigs) == 0 {
@@ -121,22 +130,27 @@ func listCloud() (*Cloud, error) {
 
 		if _, ok := cloud.Clusters[clusterName]; !ok {
 			cloud.Clusters[clusterName] = &Cluster{
-				Name:       clusterName,
-				User:       userName,
-				Expiration: expiration,
-				VMs:        make([]VM, 0),
+				Name:      clusterName,
+				User:      userName,
+				CreatedAt: createdAt,
+				Lifetime:  lifetime,
+				VMs:       make([]VM, 0),
 			}
 		}
 
 		c := cloud.Clusters[clusterName]
 		c.VMs = append(c.VMs, VM{
-			Name:       vm.Name,
-			Expiration: expiration,
-			PrivateIP:  privateIP,
-			PublicIP:   publicIP,
+			Name:      vm.Name,
+			CreatedAt: createdAt,
+			Lifetime:  lifetime,
+			PrivateIP: privateIP,
+			PublicIP:  publicIP,
 		})
-		if expiration.Before(c.Expiration) {
-			c.Expiration = expiration
+		if createdAt.Before(c.CreatedAt) {
+			c.CreatedAt = createdAt
+		}
+		if lifetime < c.Lifetime {
+			c.Lifetime = lifetime
 		}
 	}
 
@@ -165,4 +179,32 @@ func destroyCluster(c *Cluster) error {
 	}
 
 	return deleteVMs(vmNames)
+}
+
+func extendCluster(c *Cluster, extension time.Duration) error {
+	newLifetime := c.Lifetime + extension
+	extendErrors := make([]error, len(c.VMs))
+	var wg sync.WaitGroup
+
+	wg.Add(len(c.VMs))
+
+	for i := range c.VMs {
+		go func(i int) {
+			defer wg.Done()
+			extendErrors[i] = extendVM(c.VMs[i].Name, newLifetime)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Combine all errors into one.
+	var err error
+	for _, e := range extendErrors {
+		if err == nil {
+			err = e
+		} else if e != nil {
+			err = errors.Wrapf(err, e.Error())
+		}
+	}
+	return err
 }

@@ -49,7 +49,7 @@ func monitorClusters(cloud *Cloud, filename string, destroyAfter time.Duration) 
 		}
 
 		actions := userActions[c.User]
-		exp := c.Expiration
+		exp := c.ExpiresAt()
 
 		if exp.After(now) {
 			// Hasn't reached deadline yet.

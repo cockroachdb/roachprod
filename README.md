@@ -50,6 +50,9 @@ SET CLUSTER SETTING
 # Open a sql connection to the first node.
 $ cockroach sql --insecure --host=35.196.94.196
 
+# Extend lifetime by another 6 hours.
+$ roachprod extend test --lifetime=6h
+
 # Destroy cluster
 $ roachprod destroy test
 Destroying cluster marc-test with 4 nodes
