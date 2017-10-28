@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 const vmNameFormat = "user-<clusterid>-<nodeid>"
@@ -180,10 +183,28 @@ func destroyCluster(c *Cluster) error {
 
 func extendCluster(c *Cluster, extension time.Duration) error {
 	newLifetime := c.Lifetime + extension
-	for _, vm := range c.VMs {
-		if err := extendVM(vm.Name, newLifetime); err != nil {
-			return err
+	extendErrors := make([]error, len(c.VMs))
+	var wg sync.WaitGroup
+
+	wg.Add(len(c.VMs))
+
+	for i := range c.VMs {
+		go func(i int) {
+			defer wg.Done()
+			extendErrors[i] = extendVM(c.VMs[i].Name, newLifetime)
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Combine all errors into one.
+	var err error
+	for _, e := range extendErrors {
+		if err == nil {
+			err = e
+		} else if e != nil {
+			err = errors.Wrapf(err, e.Error())
 		}
 	}
-	return nil
+	return err
 }
