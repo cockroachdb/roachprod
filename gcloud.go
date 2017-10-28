@@ -159,6 +159,23 @@ func deleteVMs(names []string) error {
 	return nil
 }
 
+func extendVM(name string, lifetime time.Duration) error {
+	args := []string{"compute", "instances", "add-labels"}
+
+	args = append(args, "--project", project)
+	args = append(args, "--zone", zone)
+	args = append(args, "--labels", fmt.Sprintf("lifetime=%s", lifetime))
+	args = append(args, name)
+
+	cmd := exec.Command("gcloud", args...)
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+	}
+	return nil
+}
+
 func cleanSSH() error {
 	args := []string{"compute", "config-ssh", "--project", project, "--quiet", "--remove"}
 	cmd := exec.Command("gcloud", args...)

@@ -19,11 +19,29 @@ destroying and wiping of clusters along with running load generators.
 }
 
 var (
-	numNodes     int
-	username     string
-	destroyAfter time.Duration
-	trackingFile string
+	numNodes       int
+	username       string
+	destroyAfter   time.Duration
+	trackingFile   string
+	extendLifetime time.Duration
 )
+
+func buildClusterName(clusterID string) (string, error) {
+	if len(clusterID) == 0 {
+		return "", fmt.Errorf("cluster ID cannot be blank")
+	}
+
+	account := username
+	if len(username) == 0 {
+		var err error
+		account, err = findActiveAccount()
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return account + "-" + clusterID, nil
+}
 
 var createVMOpts VMOpts
 
@@ -35,26 +53,16 @@ var createCmd = &cobra.Command{
 		if len(args) != 1 {
 			return fmt.Errorf("wrong number of arguments")
 		}
-		clusterID := args[0]
 
-		if len(clusterID) == 0 {
-			return fmt.Errorf("cluster ID cannot be blank")
-		}
 		if numNodes <= 0 || numNodes >= 1000 {
 			// Upper limit is just for safety.
 			return fmt.Errorf("number of nodes must be in [1..999]")
 		}
 
-		account := username
-		var err error
-		if len(username) == 0 {
-			account, err = findActiveAccount()
-			if err != nil {
-				return err
-			}
+		clusterName, err := buildClusterName(args[0])
+		if err != nil {
+			return err
 		}
-
-		clusterName := account + "-" + clusterID
 		fmt.Printf("Creating cluster %s with %d nodes\n", clusterName, numNodes)
 
 		cloud, err := listCloud()
@@ -95,22 +103,11 @@ var destroyCmd = &cobra.Command{
 		if len(args) != 1 {
 			return fmt.Errorf("wrong number of arguments")
 		}
-		clusterID := args[0]
 
-		if len(clusterID) == 0 {
-			return fmt.Errorf("cluster ID cannot be blank")
+		clusterName, err := buildClusterName(args[0])
+		if err != nil {
+			return err
 		}
-
-		account := username
-		var err error
-		if len(username) == 0 {
-			account, err = findActiveAccount()
-			if err != nil {
-				return err
-			}
-		}
-
-		clusterName := account + "-" + clusterID
 
 		cloud, err := listCloud()
 		if err != nil {
@@ -227,10 +224,55 @@ var monitorCmd = &cobra.Command{
 	},
 }
 
+var extendCmd = &cobra.Command{
+	Use:   "extend",
+	Short: "extend the lifetime of the cluster by --lifetime amount of time",
+	Long:  ``,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) != 1 {
+			return fmt.Errorf("wrong number of arguments")
+		}
+
+		clusterName, err := buildClusterName(args[0])
+		if err != nil {
+			return err
+		}
+
+		cloud, err := listCloud()
+		if err != nil {
+			return err
+		}
+
+		c, ok := cloud.Clusters[clusterName]
+		if !ok {
+			return fmt.Errorf("cluster %s does not exist", clusterName)
+		}
+
+		if err := extendCluster(c, extendLifetime); err != nil {
+			return err
+		}
+
+		// Reload the clusters and print details.
+		cloud, err = listCloud()
+		if err != nil {
+			return err
+		}
+
+		c, ok = cloud.Clusters[clusterName]
+		if !ok {
+			return fmt.Errorf("cluster %s does not exist", clusterName)
+		}
+
+		c.PrintDetails()
+
+		return nil
+	},
+}
+
 func main() {
 	cobra.EnableCommandSorting = false
 
-	rootCmd.AddCommand(createCmd, destroyCmd, listCmd, monitorCmd, statusCmd, syncCmd)
+	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, monitorCmd, statusCmd, syncCmd)
 
 	createCmd.Flags().DurationVarP(&createVMOpts.Lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", true, "Use local SSD")
@@ -239,6 +281,9 @@ func main() {
 	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 
 	destroyCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
+
+	extendCmd.Flags().DurationVarP(&extendLifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
+	extendCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 
 	monitorCmd.Flags().StringVar(&monitorEmailOpts.From, "email-from", "", "Address of the sender")
 	monitorCmd.Flags().StringVar(&monitorEmailOpts.Host, "email-host", "", "SMTP host")
