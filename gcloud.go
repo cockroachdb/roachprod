@@ -9,14 +9,41 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/pflag"
 )
 
 const (
 	project = "cockroach-ephemeral"
 	domain  = "@cockroachlabs.com"
-	zone    = "us-east1-b"
 	vmUser  = "cockroach"
 )
+
+// ZoneList is a slice of strings that implements pflag's value
+// interface.
+type ZoneList []string
+
+var _ pflag.Value = &ZoneList{}
+
+// String returns a comma seperated list of zones. This is part
+// of pflag's value interface.
+func (zoneList ZoneList) String() string {
+	return strings.Join(zoneList, ",")
+}
+
+// Type returns the underlying type in string form. This is part of pflag's
+// value interface.
+func (*ZoneList) Type() string {
+	return "ZoneList"
+}
+
+// Set adds a new value to the ZoneList. It is the important part of
+// pflag's value interface.
+func (zoneList *ZoneList) Set(value string) error {
+	*zoneList = ZoneList(strings.Split(value, ","))
+	return nil
+}
+
+var zones = ZoneList{"us-east1-b", "us-west1-b", "europe-west2-b", "us-east1-b"}
 
 // VMOpts is the set of options when creating VMs.
 type VMOpts struct {
@@ -45,12 +72,13 @@ type jsonVM struct {
 	Labels            map[string]string
 	CreationTimestamp time.Time
 	NetworkInterfaces []struct {
-		NetworkIP     string
+		NetworkIP string
 		AccessConfigs []struct {
 			Name  string
 			NatIP string
 		}
 	}
+	Zone string
 }
 
 type JsonVMList []jsonVM
@@ -59,6 +87,14 @@ func (vms JsonVMList) Names() []string {
 	ret := make([]string, len(vms))
 	for i, vm := range vms {
 		ret[i] = vm.Name
+	}
+	return ret
+}
+
+func (vms JsonVMList) Zones() []string {
+	ret := make([]string, len(vms))
+	for i, vm := range vms {
+		ret[i] = vm.Zone
 	}
 	return ret
 }
@@ -106,55 +142,60 @@ func createVMs(names []string, opts VMOpts) error {
 	}
 	defer os.Remove(filename)
 
-	// Fixed args.
-	args := []string{
-		"compute", "instances", "create",
-		"--subnet", "default",
-		"--maintenance-policy", "MIGRATE",
-		"--service-account", "21965078311-compute@developer.gserviceaccount.com",
-		"--scopes", "https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append",
-		"--image", "ubuntu-1604-xenial-v20171002",
-		"--image-project", "ubuntu-os-cloud",
-		"--boot-disk-size", "10",
-		"--boot-disk-type", "pd-ssd",
+	for i, name := range names {
+		// Fixed args.
+		args := []string{
+			"compute", "instances", "create",
+			"--subnet", "default",
+			"--maintenance-policy", "MIGRATE",
+			"--service-account", "21965078311-compute@developer.gserviceaccount.com",
+			"--scopes", "https://www.googleapis.com/auth/devstorage.read_only,https://www.googleapis.com/auth/logging.write,https://www.googleapis.com/auth/monitoring.write,https://www.googleapis.com/auth/servicecontrol,https://www.googleapis.com/auth/service.management.readonly,https://www.googleapis.com/auth/trace.append",
+			"--image", "ubuntu-1604-xenial-v20171002",
+			"--image-project", "ubuntu-os-cloud",
+			"--boot-disk-size", "10",
+			"--boot-disk-type", "pd-ssd",
+		}
+
+		// Dynamic args.
+		if opts.UseLocalSSD {
+			args = append(args, "--local-ssd", "interface=SCSI")
+		}
+		args = append(args, "--machine-type", opts.MachineType)
+		args = append(args, "--labels", fmt.Sprintf("lifetime=%s", opts.Lifetime))
+
+		args = append(args, "--metadata-from-file", fmt.Sprintf("startup-script=%s", filename))
+		args = append(args, "--project", project)
+		args = append(args, "--zone", zones[i%len((zones))])
+		//args = append(args, "--additional-zones",strings.Join(zones[1:],","))
+		args = append(args, name)
+		cmd := exec.Command("gcloud", args...)
+
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+		}
 	}
 
-	// Dynamic args.
-	if opts.UseLocalSSD {
-		args = append(args, "--local-ssd", "interface=SCSI")
-	}
-	args = append(args, "--machine-type", opts.MachineType)
-	args = append(args, "--labels", fmt.Sprintf("lifetime=%s", opts.Lifetime))
-
-	args = append(args, "--metadata-from-file", fmt.Sprintf("startup-script=%s", filename))
-	args = append(args, "--project", project)
-	args = append(args, "--zone", zone)
-	args = append(args, names...)
-
-	cmd := exec.Command("gcloud", args...)
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
-	}
 	return nil
 }
 
-func deleteVMs(names []string) error {
-	args := []string{
-		"compute", "instances", "delete",
-		"--delete-disks", "all",
-	}
+func deleteVMs(names []string, vmZones []string) error {
+	for i, name := range names {
+		args := []string{
+			"compute", "instances", "delete",
+			"--delete-disks", "all",
+		}
 
-	args = append(args, "--project", project)
-	args = append(args, "--zone", zone)
-	args = append(args, names...)
+		args = append(args, "--project", project)
+		args = append(args, "--zone", vmZones[i])
+		args = append(args, name)
 
-	cmd := exec.Command("gcloud", args...)
+		cmd := exec.Command("gcloud", args...)
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+		}
 	}
 	return nil
 }

@@ -51,7 +51,7 @@ func (c *Cluster) PrintDetails() {
 		fmt.Printf("%s remaining\n", l)
 	}
 	for _, vm := range c.VMs {
-		fmt.Printf("  %s\t%s.%s.%s\t%s\t%s\n", vm.Name, vm.Name, zone, project, vm.PrivateIP, vm.PublicIP)
+		fmt.Printf("  %s\t%s.%s.%s\t%s\t%s\n", vm.Name, vm.Name, vm.Zone, project, vm.PrivateIP, vm.PublicIP)
 	}
 }
 
@@ -60,6 +60,7 @@ type VM struct {
 	Expiration time.Time
 	PrivateIP  string
 	PublicIP   string
+	Zone       string
 }
 
 type VMList []VM
@@ -113,6 +114,8 @@ func listCloud() (*Cloud, error) {
 		}
 		privateIP := vm.NetworkInterfaces[0].NetworkIP
 		publicIP := vm.NetworkInterfaces[0].AccessConfigs[0].NatIP
+		vmZones := strings.Split(vm.Zone, "/")
+		zone := vmZones[len(zones)-1]
 
 		if len(privateIP) == 0 || len(publicIP) == 0 {
 			cloud.BadNetwork = append(cloud.BadNetwork, vm)
@@ -134,6 +137,7 @@ func listCloud() (*Cloud, error) {
 			Expiration: expiration,
 			PrivateIP:  privateIP,
 			PublicIP:   publicIP,
+			Zone:       zone,
 		})
 		if expiration.Before(c.Expiration) {
 			c.Expiration = expiration
@@ -160,9 +164,11 @@ func createCluster(name string, nodes int, opts VMOpts) error {
 func destroyCluster(c *Cluster) error {
 	n := len(c.VMs)
 	vmNames := make([]string, n, n)
+	vmZones := make([]string, n, n)
 	for i, vm := range c.VMs {
 		vmNames[i] = vm.Name
+		vmZones[i] = vm.Zone
 	}
 
-	return deleteVMs(vmNames)
+	return deleteVMs(vmNames, vmZones)
 }

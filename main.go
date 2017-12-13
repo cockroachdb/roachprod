@@ -55,7 +55,7 @@ var createCmd = &cobra.Command{
 		}
 
 		clusterName := account + "-" + clusterID
-		fmt.Printf("Creating cluster %s with %d nodes\n", clusterName, numNodes)
+		fmt.Printf("Creating cluster %s with %d nodes\n in zones %s", clusterName, numNodes, zones)
 
 		cloud, err := listCloud()
 		if err != nil {
@@ -237,6 +237,7 @@ func main() {
 	createCmd.Flags().StringVar(&createVMOpts.MachineType, "machine-type", "n1-standard-4", "Machine type (see https://cloud.google.com/compute/docs/machine-types)")
 	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 4, "Number of nodes")
 	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
+	createCmd.Flags().VarP(&zones, "zones", "z", "Zones for cluster.")
 
 	destroyCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 
