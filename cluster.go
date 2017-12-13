@@ -59,7 +59,7 @@ func (c *Cluster) PrintDetails() {
 		fmt.Printf("%s remaining\n", l)
 	}
 	for _, vm := range c.VMs {
-		fmt.Printf("  %s\t%s.%s.%s\t%s\t%s\n", vm.Name, vm.Name, zone, project, vm.PrivateIP, vm.PublicIP)
+		fmt.Printf("  %s\t%s.%s.%s\t%s\t%s\n", vm.Name, vm.Name, vm.Zone, project, vm.PrivateIP, vm.PublicIP)
 	}
 }
 
@@ -69,6 +69,7 @@ type VM struct {
 	Lifetime  time.Duration
 	PrivateIP string
 	PublicIP  string
+	Zone       string
 }
 
 type VMList []VM
@@ -122,7 +123,10 @@ func listCloud() (*Cloud, error) {
 		}
 		privateIP := vm.NetworkInterfaces[0].NetworkIP
 		publicIP := vm.NetworkInterfaces[0].AccessConfigs[0].NatIP
-
+		// This is splitting and taking the last part of a url path,
+		// which is the zone.
+		vmZones := strings.Split(vm.Zone, "/")
+		zone := vmZones[len(vmZones)-1]
 		if len(privateIP) == 0 || len(publicIP) == 0 {
 			cloud.BadNetwork = append(cloud.BadNetwork, vm)
 			continue
@@ -145,6 +149,7 @@ func listCloud() (*Cloud, error) {
 			Lifetime:  lifetime,
 			PrivateIP: privateIP,
 			PublicIP:  publicIP,
+			Zone:       zone,
 		})
 		if createdAt.Before(c.CreatedAt) {
 			c.CreatedAt = createdAt
@@ -174,11 +179,13 @@ func createCluster(name string, nodes int, opts VMOpts) error {
 func destroyCluster(c *Cluster) error {
 	n := len(c.VMs)
 	vmNames := make([]string, n, n)
+	vmZones := make([]string, n, n)
 	for i, vm := range c.VMs {
 		vmNames[i] = vm.Name
+		vmZones[i] = vm.Zone
 	}
 
-	return deleteVMs(vmNames)
+	return deleteVMs(vmNames, vmZones)
 }
 
 func extendCluster(c *Cluster, extension time.Duration) error {
@@ -191,7 +198,7 @@ func extendCluster(c *Cluster, extension time.Duration) error {
 	for i := range c.VMs {
 		go func(i int) {
 			defer wg.Done()
-			extendErrors[i] = extendVM(c.VMs[i].Name, newLifetime)
+			extendErrors[i] = extendVM(c.VMs[i].Name, c.VMs[i].Zone, newLifetime)
 		}(i)
 	}
 
