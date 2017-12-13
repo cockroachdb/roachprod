@@ -78,7 +78,7 @@ func monitorClusters(cloud *Cloud, filename string, destroyAfter time.Duration) 
 	maybeAddVMs(cloud.NoExpiration)
 	maybeAddVMs(cloud.BadNetwork)
 	if len(badVMs) > 0 {
-		if err := deleteVMs(badVMs.Names()); err != nil {
+		if err := deleteVMs(badVMs.Names(), badVMs.Zones()); err != nil {
 			return errors.Wrapf(err, "failed to delete bad VMs")
 		}
 	}
