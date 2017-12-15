@@ -19,44 +19,34 @@ $ go get github.com/cockroachlabs/roachprod
 
 ```bash
 # Create cluster with 4 nodes and local SSD (last node is used as load generator by roachperf)
-$ roachprod create test -n 4 --local-ssd
-Creating cluster marc-test with 4 nodes
-OK.
-  marc-test-0001	marc-test-0001.us-east1-b.cockroach-ephemeral	10.142.0.8	35.196.94.196
-  marc-test-0002	marc-test-0002.us-east1-b.cockroach-ephemeral	10.142.0.5	35.196.95.207
-  marc-test-0003	marc-test-0003.us-east1-b.cockroach-ephemeral	10.142.0.7	35.196.151.250
-  marc-test-0004	marc-test-0004.us-east1-b.cockroach-ephemeral	10.142.0.6	35.196.194.230
-Syncing...
+export NAME="test"
+export FULLNAME="${USER}-${NAME}"
+roachprod create ${NAME} -n 4 --local-ssd
 
 # Add gcloud SSH key
-$ ssh-add ~/.ssh/google_compute_engine
+ssh-add ~/.ssh/google_compute_engine
 
 # Stage scripts and binaries using crl-prod
-$ crl-stage-binaries marc-test all scripts
-$ crl-stage-binaries marc-test all cockroach
+crl-stage-binaries ${FULLNAME} all scripts
+crl-stage-binaries ${FULLNAME} all cockroach
 
 # Or using roachperf (eg: for your locally-built binary)
-$ roachperf marc-test put cockroach
+roachperf ${FULLNAME} put cockroach
 
 # Start cluster using roachperf.
-$ roachperf marc-test start
-marc-test: starting 3/3
-marc-test: initializing cluster settings 1/1
-SET CLUSTER SETTING
+roachperf ${FULLNAME} start
 
 # Check the admin UI
 # http://35.196.94.196:8080
 
 # Open a sql connection to the first node.
-$ cockroach sql --insecure --host=35.196.94.196
+cockroach sql --insecure --host=35.196.94.196
 
 # Extend lifetime by another 6 hours.
-$ roachprod extend test --lifetime=6h
+roachprod extend ${NAME} --lifetime=6h
 
 # Destroy cluster
-$ roachprod destroy test
-Destroying cluster marc-test with 4 nodes
-OK
+roachprod destroy ${NAME}
 ```
 
 # Other commands
