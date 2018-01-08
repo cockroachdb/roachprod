@@ -9,20 +9,23 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"math"
+
+	"golang.org/x/sync/errgroup"
 )
 
 const (
 	project = "cockroach-ephemeral"
 	domain  = "@cockroachlabs.com"
-	zone    = "us-east1-b"
 	vmUser  = "cockroach"
 )
 
 // VMOpts is the set of options when creating VMs.
 type VMOpts struct {
-	UseLocalSSD bool
-	Lifetime    time.Duration
-	MachineType string
+	UseLocalSSD    bool
+	Lifetime       time.Duration
+	MachineType    string
+	GeoDistributed bool
 }
 
 func runJSONCommand(args []string, parsed interface{}) error {
@@ -45,12 +48,13 @@ type jsonVM struct {
 	Labels            map[string]string
 	CreationTimestamp time.Time
 	NetworkInterfaces []struct {
-		NetworkIP     string
+		NetworkIP string
 		AccessConfigs []struct {
 			Name  string
 			NatIP string
 		}
 	}
+	Zone string
 }
 
 type JsonVMList []jsonVM
@@ -59,6 +63,14 @@ func (vms JsonVMList) Names() []string {
 	ret := make([]string, len(vms))
 	for i, vm := range vms {
 		ret[i] = vm.Name
+	}
+	return ret
+}
+
+func (vms JsonVMList) Zones() []string {
+	ret := make([]string, len(vms))
+	for i, vm := range vms {
+		ret[i] = vm.Zone
 	}
 	return ret
 }
@@ -106,6 +118,18 @@ func createVMs(names []string, opts VMOpts) error {
 	}
 	defer os.Remove(filename)
 
+	if !opts.GeoDistributed {
+		zones = []string{zones[0]}
+	}
+
+	totalNodes := float64(len(names))
+	totalZones := float64(len(zones))
+	nodesPerZone := int(math.Ceil(totalNodes / totalZones))
+
+	ct := int(0)
+	i := 0
+
+
 	// Fixed args.
 	args := []string{
 		"compute", "instances", "create",
@@ -128,38 +152,71 @@ func createVMs(names []string, opts VMOpts) error {
 
 	args = append(args, "--metadata-from-file", fmt.Sprintf("startup-script=%s", filename))
 	args = append(args, "--project", project)
-	args = append(args, "--zone", zone)
-	args = append(args, names...)
 
-	cmd := exec.Command("gcloud", args...)
+	var g errgroup.Group
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+	// This is calculating the number of machines to allocate per zone by taking the ceiling of the the total number
+	// of machines left divided by the number of zones left. If the the number of machines isn't
+	// divisible by the number of zones, then the extra machines will be allocated one per zone until there are
+	// no more extra machines left.
+	for i < len(names) {
+		argsWithZone := append(args[:len(args):len(args)], "--zone", zones[ct])
+		ct++
+		argsWithZone = append(argsWithZone, names[i:i+nodesPerZone]...)
+		i += nodesPerZone
+
+		totalNodes -= float64(nodesPerZone)
+		totalZones -= 1
+		nodesPerZone = int(math.Ceil(totalNodes / totalZones))
+
+		g.Go(func() error {
+			cmd := exec.Command("gcloud", argsWithZone...)
+
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+			}
+			return nil
+		})
+
 	}
-	return nil
+
+	return g.Wait()
 }
 
-func deleteVMs(names []string) error {
-	args := []string{
-		"compute", "instances", "delete",
-		"--delete-disks", "all",
+func deleteVMs(names []string, zones []string) error {
+	zoneMap := make(map[string][]string)
+	for i, name := range names {
+		zoneMap[zones[i]] = append(zoneMap[zones[i]], name)
 	}
 
-	args = append(args, "--project", project)
-	args = append(args, "--zone", zone)
-	args = append(args, names...)
+	var g errgroup.Group
 
-	cmd := exec.Command("gcloud", args...)
+	for zone, names := range zoneMap {
+		args := []string{
+			"compute", "instances", "delete",
+			"--delete-disks", "all",
+		}
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+		args = append(args, "--project", project)
+		args = append(args, "--zone", zone)
+		args = append(args, names...)
+
+		g.Go(func() error {
+			cmd := exec.Command("gcloud", args...)
+
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				return errors.Wrapf(err, "Command: gcloud %s\nOutput: %s", args, output)
+			}
+			return nil
+		})
 	}
-	return nil
+
+	return g.Wait()
 }
 
-func extendVM(name string, lifetime time.Duration) error {
+func extendVM(name string, zone string, lifetime time.Duration) error {
 	args := []string{"compute", "instances", "add-labels"}
 
 	args = append(args, "--project", project)
