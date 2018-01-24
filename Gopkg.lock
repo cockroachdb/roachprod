@@ -26,6 +26,18 @@
   version = "v1.0.0"
 
 [[projects]]
+  branch = "master"
+  name = "golang.org/x/net"
+  packages = ["context"]
+  revision = "0ed95abb35c445290478a5348a7b38bb154135fd"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/sync"
+  packages = ["errgroup"]
+  revision = "fd80eb99c8f653c847d294a001bdf2a3a6f768f5"
+
+[[projects]]
   branch = "v3"
   name = "gopkg.in/alexcesaro/quotedprintable.v3"
   packages = ["."]
@@ -40,6 +52,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "162a797bf4ec2c10b694424e41e19c1452ce33743ca75028f5347fd8465f27c3"
+  inputs-digest = "d84547b9e4ed76689fa2b33adeb8e8a335d99712e391072c05e198938bb714dd"
   solver-name = "gps-cdcl"
   solver-version = 1
