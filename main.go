@@ -25,9 +25,8 @@ var (
 	destroyAfter   time.Duration
 	trackingFile   string
 	extendLifetime time.Duration
-    zones = ZoneList{"us-east1-b", "us-west1-b", "europe-west2-b"}
+	zones          = ZoneList{"us-east1-b", "us-west1-b", "europe-west2-b"}
 )
-
 
 // ZoneList is a slice of strings that implements pflag's value
 // interface.
@@ -54,9 +53,9 @@ func (zoneList *ZoneList) Set(value string) error {
 	return nil
 }
 
-func buildClusterName(clusterID string) (string, error) {
-	if len(clusterID) == 0 {
-		return "", fmt.Errorf("cluster ID cannot be blank")
+func verifyClusterName(clusterName string) (string, error) {
+	if len(clusterName) == 0 {
+		return "", fmt.Errorf("cluster name cannot be blank")
 	}
 
 	account := username
@@ -68,7 +67,25 @@ func buildClusterName(clusterID string) (string, error) {
 		}
 	}
 
-	return account + "-" + clusterID, nil
+	if !strings.HasPrefix(clusterName, account+"-") {
+		i := strings.Index(clusterName, "-")
+		suffix := clusterName
+		if i != -1 {
+			// The user specified a username prefix, but it didn't match the active
+			// account name. For example, assuming the account is "peter", `roachprod
+			// create joe-perf` should be specified as `roachprod create joe-perf -u
+			// joe`.
+			suffix = clusterName[i+1:]
+		} else {
+			// The user didn't specify a username prefix. For example, assuming the
+			// account is "peter", `roachprod create perf` should be specified as
+			// `roachprod create peter-perf`.
+		}
+		return "", fmt.Errorf("malformed cluster ID %s, did you mean %s-%s?",
+			clusterName, account, suffix)
+	}
+
+	return clusterName, nil
 }
 
 var createVMOpts VMOpts
@@ -87,7 +104,7 @@ var createCmd = &cobra.Command{
 			return fmt.Errorf("number of nodes must be in [1..999]")
 		}
 
-		clusterName, err := buildClusterName(args[0])
+		clusterName, err := verifyClusterName(args[0])
 		if err != nil {
 			return err
 		}
@@ -132,7 +149,7 @@ var destroyCmd = &cobra.Command{
 			return fmt.Errorf("wrong number of arguments")
 		}
 
-		clusterName, err := buildClusterName(args[0])
+		clusterName, err := verifyClusterName(args[0])
 		if err != nil {
 			return err
 		}
@@ -261,7 +278,7 @@ var extendCmd = &cobra.Command{
 			return fmt.Errorf("wrong number of arguments")
 		}
 
-		clusterName, err := buildClusterName(args[0])
+		clusterName, err := verifyClusterName(args[0])
 		if err != nil {
 			return err
 		}
@@ -309,7 +326,6 @@ func main() {
 	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 	createCmd.Flags().VarP(&zones, "zones", "z", "Zones for cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.GeoDistributed, "geo", false, "Create geo-distributed cluster")
-
 
 	destroyCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 
