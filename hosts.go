@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -9,6 +8,7 @@ import (
 	"os/user"
 	"path"
 	"path/filepath"
+	"text/tabwriter"
 
 	"github.com/pkg/errors"
 )
@@ -37,13 +37,19 @@ func syncHosts(cloud *Cloud) error {
 	// Write all host files.
 	for _, c := range cloud.Clusters {
 		filename := path.Join(hd, c.Name)
-
-		var buf bytes.Buffer
-		for _, vm := range c.VMs {
-			fmt.Fprintf(&buf, "%s@%s\n", user.Username, vm.PublicIP)
+		file, err := os.Create(filename)
+		if err != nil {
+			return errors.Wrapf(err, "problem creating file %s", filename)
 		}
 
-		if err := ioutil.WriteFile(filename, buf.Bytes(), 0755); err != nil {
+		// Align columns left and separate with at least two spaces.
+		tw := tabwriter.NewWriter(file, 0, 8, 2, ' ', 0)
+		tw.Write([]byte("# user@host\tlocality\n"))
+		for _, vm := range c.VMs {
+			tw.Write([]byte(fmt.Sprintf(
+				"%s@%s\t%s\n", user.Username, vm.PublicIP, vm.locality())))
+		}
+		if err := tw.Flush(); err != nil {
 			return errors.Wrapf(err, "problem writing file %s", filename)
 		}
 	}
