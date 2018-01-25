@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 var rootCmd = &cobra.Command{
@@ -25,33 +24,8 @@ var (
 	destroyAfter   time.Duration
 	trackingFile   string
 	extendLifetime time.Duration
-	zones          = ZoneList{"us-east1-b", "us-west1-b", "europe-west2-b"}
+	zones          []string
 )
-
-// ZoneList is a slice of strings that implements pflag's value
-// interface.
-type ZoneList []string
-
-var _ pflag.Value = &ZoneList{}
-
-// String returns a comma seperated list of zones. This is part
-// of pflag's value interface.
-func (zoneList ZoneList) String() string {
-	return strings.Join(zoneList, ",")
-}
-
-// Type returns the underlying type in string form. This is part of pflag's
-// value interface.
-func (*ZoneList) Type() string {
-	return "ZoneList"
-}
-
-// Set adds a new value to the ZoneList. It is the important part of
-// pflag's value interface.
-func (zoneList *ZoneList) Set(value string) error {
-	*zoneList = ZoneList(strings.Split(value, ","))
-	return nil
-}
 
 func verifyClusterName(clusterName string) (string, error) {
 	if len(clusterName) == 0 {
@@ -324,7 +298,7 @@ func main() {
 	createCmd.Flags().StringVar(&createVMOpts.MachineType, "machine-type", "n1-standard-4", "Machine type (see https://cloud.google.com/compute/docs/machine-types)")
 	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 4, "Number of nodes")
 	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
-	createCmd.Flags().VarP(&zones, "zones", "z", "Zones for cluster")
+	createCmd.Flags().StringSliceVarP(&zones, "zones", "z", []string{"us-east1-b", "us-west1-b", "europe-west2-b"}, "Zones for cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.GeoDistributed, "geo", false, "Create geo-distributed cluster")
 
 	destroyCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
