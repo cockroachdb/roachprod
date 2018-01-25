@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"log"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -69,7 +71,19 @@ type VM struct {
 	Lifetime  time.Duration
 	PrivateIP string
 	PublicIP  string
-	Zone       string
+	Zone      string
+}
+
+var regionRE = regexp.MustCompile(`(.*[^-])-?[a-z]$`)
+
+func (vm *VM) locality() string {
+	var region string
+	if match := regionRE.FindStringSubmatch(vm.Zone); len(match) == 2 {
+		region = match[1]
+	} else {
+		log.Fatalf("unable to parse region from zone %q", vm.Zone)
+	}
+	return fmt.Sprintf("region=%s,zone=%s", region, vm.Zone)
 }
 
 type VMList []VM
@@ -149,7 +163,7 @@ func listCloud() (*Cloud, error) {
 			Lifetime:  lifetime,
 			PrivateIP: privateIP,
 			PublicIP:  publicIP,
-			Zone:       zone,
+			Zone:      zone,
 		})
 		if createdAt.Before(c.CreatedAt) {
 			c.CreatedAt = createdAt
