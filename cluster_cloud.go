@@ -15,7 +15,7 @@ import (
 const vmNameFormat = "user-<clusterid>-<nodeid>"
 
 type Cloud struct {
-	Clusters map[string]*Cluster
+	Clusters map[string]*CloudCluster
 	// Individual "bad" instances by category.
 	InvalidName  JsonVMList
 	NoExpiration JsonVMList
@@ -24,14 +24,17 @@ type Cloud struct {
 
 func newCloud() *Cloud {
 	return &Cloud{
-		Clusters:     make(map[string]*Cluster),
+		Clusters:     make(map[string]*CloudCluster),
 		InvalidName:  make(JsonVMList, 0),
 		NoExpiration: make(JsonVMList, 0),
 		BadNetwork:   make(JsonVMList, 0),
 	}
 }
 
-type Cluster struct {
+// A CloudCluster is created by querying gcloud.
+//
+// TODO(benesch): unify with syncedCluster.
+type CloudCluster struct {
 	Name string
 	User string
 	// This is the earliest creation and shortest lifetime across VMs.
@@ -40,19 +43,19 @@ type Cluster struct {
 	VMs       VMList
 }
 
-func (c *Cluster) ExpiresAt() time.Time {
+func (c *CloudCluster) ExpiresAt() time.Time {
 	return c.CreatedAt.Add(c.Lifetime)
 }
 
-func (c *Cluster) LifetimeRemaining() time.Duration {
+func (c *CloudCluster) LifetimeRemaining() time.Duration {
 	return time.Until(c.ExpiresAt())
 }
 
-func (c *Cluster) String() string {
+func (c *CloudCluster) String() string {
 	return fmt.Sprintf("%s: %d (%s)", c.Name, len(c.VMs), c.LifetimeRemaining().Round(time.Second))
 }
 
-func (c *Cluster) PrintDetails() {
+func (c *CloudCluster) PrintDetails() {
 	fmt.Printf("%s: ", c.Name)
 	l := c.LifetimeRemaining().Round(time.Second)
 	if l <= 0 {
@@ -147,7 +150,7 @@ func listCloud() (*Cloud, error) {
 		}
 
 		if _, ok := cloud.Clusters[clusterName]; !ok {
-			cloud.Clusters[clusterName] = &Cluster{
+			cloud.Clusters[clusterName] = &CloudCluster{
 				Name:      clusterName,
 				User:      userName,
 				CreatedAt: createdAt,
@@ -190,7 +193,7 @@ func createCluster(name string, nodes int, opts VMOpts) error {
 	return createVMs(vmNames, opts)
 }
 
-func destroyCluster(c *Cluster) error {
+func destroyCluster(c *CloudCluster) error {
 	n := len(c.VMs)
 	vmNames := make([]string, n, n)
 	vmZones := make([]string, n, n)
@@ -202,7 +205,7 @@ func destroyCluster(c *Cluster) error {
 	return deleteVMs(vmNames, vmZones)
 }
 
-func extendCluster(c *Cluster, extension time.Duration) error {
+func extendCluster(c *CloudCluster, extension time.Duration) error {
 	newLifetime := c.Lifetime + extension
 	extendErrors := make([]error, len(c.VMs))
 	var wg sync.WaitGroup
