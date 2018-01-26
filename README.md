@@ -1,57 +1,73 @@
-# Setup
+## roachprod
 
-Make sure you have gcloud [installed](https://cloud.google.com/sdk/downloads) and configured (`gcloud auth list` to check, `gcloud auth login` to authenticate). You may want to update old installations (`gcloud components update`).
+⚠️ roachprod is an **internal** tool for testing CockroachDB clusters. Use at
+your own risk! ⚠️
 
-Building:
+## Setup
+
+Make sure you have [gcloud installed] and configured (`gcloud auth list` to
+check, `gcloud auth login` to authenticate). You may want to update old
+installations (`gcloud components update`).
+
+To build and install into `$GOPATH/bin`:
+
 ```
-$ go get github.com/cockroachlabs/roachprod
+$ go get -u github.com/cockroachlabs/roachprod
 ```
 
-# Summary
+## Summary
 
-* clusters are created under the [cockroach-ephemeral](https://console.cloud.google.com/home/dashboard?project=cockroach-ephemeral) GCE project.
-* anyone can connect to any port on VMs in `cockroach-ephemeral` **DO NOT STORE SENSITIVE DATA**.
-* cluster names are prefixed with the user creating them (eg: `roachprod create test` creates the `marc-test` cluster)
-* VMs have a default lifetime of 12h (changeable with the `-l` flag) and are deleted 6 hours after expiration.
-* default settings create 4 VMs (`-n 4`) with 4 CPUs, 15GB ram (`--machine-type=n1-standard-4`) using local SSDs (`--local-ssd`).
+* Clusters are created under the [cockroach-ephemeral] GCE project.
+* Anyone can connect to any port on VMs in `cockroach-ephemeral`.
+  **DO NOT STORE SENSITIVE DATA**.
+* Cluster names are prefixed with the user creating them. For example,
+  `roachprod create test` creates the `marc-test` cluster.
+* VMs have a default lifetime of 12 hours (changeable with the `-l` flag) and
+  are deleted 6 hours after expiration.
+* Default settings create 4 VMs (`-n 4`) with 4 CPUs, 15GB memory
+  (`--machine-type=n1-standard-4`), and local SSDs (`--local-ssd`).
 
-# Setting up a cluster using roachprod/roachperf
+## Cluster quick-start using roachprod/roachperf
 
 ```bash
-# Create cluster with 4 nodes and local SSD (last node is used as load generator by roachperf)
-export NAME="test"
-export FULLNAME="${USER}-${NAME}"
-roachprod create ${NAME} -n 4 --local-ssd
+# Create a cluster with 4 nodes and local SSD. The last node is used as a
+# load generator by roachperf.
+# Note that the cluster name must always begin with your username.
+export FULLNAME="${USER}-test"
+roachprod create ${FULLNAME} -n 4 --local-ssd
 
-# Add gcloud SSH key
+# Add gcloud SSH key.
 ssh-add ~/.ssh/google_compute_engine
 
-# Stage scripts and binaries using crl-prod
+# Stage scripts and binaries using crl-prod...
 crl-stage-binaries ${FULLNAME} all scripts
 crl-stage-binaries ${FULLNAME} all cockroach
 
-# Or using roachperf (eg: for your locally-built binary)
+# ...or using roachperf (e.g., for your locally-built binary).
 roachperf ${FULLNAME} put cockroach
 
-# Start cluster using roachperf.
+# Start a cluster using roachperf.
 roachperf ${FULLNAME} start
 
-# Check the admin UI
+# Check the admin UI.
 # http://35.196.94.196:8080
 
-# Open a sql connection to the first node.
+# Open a SQL connection to the first node.
 cockroach sql --insecure --host=35.196.94.196
 
 # Extend lifetime by another 6 hours.
-roachprod extend ${NAME} --lifetime=6h
+roachprod extend ${FULLNAME} --lifetime=6h
 
-# Destroy cluster
-roachprod destroy ${NAME}
+# Destroy the cluster.
+roachprod destroy ${FULLNAME}
 ```
 
-# Other commands
+## Command reference
 
-### Create a cluster:
+Warning: this reference is incomplete. Be prepared to refer to the CLI help text
+and the source code.
+
+### Create a cluster
 ```
 $ roachprod create foo
 Creating cluster marc-foo with 3 nodes
@@ -64,7 +80,8 @@ Syncing...
 ```
 
 ### Interact using crl-prod tools
-`roachprod` populates hosts files in `~/.roachprod/hosts`. These are used by `crl-prod` tools to map clusters to node addresses.
+`roachprod` populates hosts files in `~/.roachprod/hosts`. These are used by
+`crl-prod` tools to map clusters to node addresses.
 
 ```
 $ crl-ssh marc-foo all df -h /
@@ -82,7 +99,7 @@ Filesystem      Size  Used Avail Use% Mounted on
 ```
 
 ### Interact using `roachperf`
-[roachperf](https://github.com/cockroachlabs/roachprod) consumes `~/.roachprod/hosts`.
+[roachperf] also consumes `~/.roachprod/hosts`.
 
 ```
 # Add ssh-key
@@ -96,7 +113,8 @@ marc-foo: status 3/3
 ```
 
 ### SSH into hosts
-`roachprod` uses `gcloud` to sync the list of hostnames to `~/.ssh/config` and setup keys.
+`roachprod` uses `gcloud` to sync the list of hostnames to `~/.ssh/config` and
+set up keys.
 
 ```
 $ ssh marc-foo-0000.us-east1-b.cockroach-ephemeral
@@ -114,7 +132,7 @@ Syncing...
 
 ### Destroy cluster
 ```
-$ roachprod destroy foo
+$ roachprod destroy marc-foo
 Destroying cluster marc-foo with 3 nodes
 OK
 ```
@@ -124,4 +142,8 @@ See `roachprod help <command>` for further details.
 
 # Future improvements
 
-* more configurable: zones, bigger loadgen VM (last instance)
+* Bigger loadgen VM (last instance)
+
+[cockroach-ephemeral]: https://console.cloud.google.com/home/dashboard?project=cockroach-ephemeral
+[gcloud installed]: https://cloud.google.com/sdk/downloads
+[roachperf]: https://github.com/cockroachdb/roachperf
