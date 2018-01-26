@@ -43,11 +43,11 @@ ssh-add ~/.ssh/google_compute_engine
 crl-stage-binaries ${FULLNAME} all scripts
 crl-stage-binaries ${FULLNAME} all cockroach
 
-# ...or using roachperf (e.g., for your locally-built binary).
-roachperf ${FULLNAME} put cockroach
+# ...or using roachprod directly (e.g., for your locally-built binary).
+roachprod put ${FULLNAME} cockroach
 
-# Start a cluster using roachperf.
-roachperf ${FULLNAME} start
+# Start a cluster.
+roachprod start ${FULLNAME}
 
 # Check the admin UI.
 # http://35.196.94.196:8080
@@ -98,14 +98,13 @@ Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1        49G  1.2G   48G   3% /
 ```
 
-### Interact using `roachperf`
-[roachperf] also consumes `~/.roachprod/hosts`.
+### Interact using `roachprod` directly
 
 ```
 # Add ssh-key
 $ ssh-add ~/.ssh/google_compute_engine
 
-$ roachperf marc-foo status
+$ roachprod status marc-foo
 marc-foo: status 3/3
    1: not running
    2: not running
@@ -143,6 +142,19 @@ See `roachprod help <command>` for further details.
 # Future improvements
 
 * Bigger loadgen VM (last instance)
+
+* Ease the creation of test metadata and then running a series of tests
+  using `roachperf <cluster> test <dir1> <dir2> ...`. Perhaps something like
+  `cockroach prepare <test> <binary>`.
+
+* Automatically detect stalled tests and restart tests upon unexpected
+  failures. Detection of stalled tests could be done by noticing zero output
+  for a period of time.
+
+* Detect crashed cockroach nodes.
+
+* Configure and run haproxy. (Assume it is already installed). This can be
+  done by running "cockroach gen haproxy" after the cluster is started.
 
 [cockroach-ephemeral]: https://console.cloud.google.com/home/dashboard?project=cockroach-ephemeral
 [gcloud installed]: https://cloud.google.com/sdk/downloads

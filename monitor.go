@@ -27,9 +27,9 @@ var monitorEmailOpts EmailOpts
 // Tracks all the clusters to notify a user about.
 type userNotification struct {
 	Username string
-	Good     []*Cluster
-	Warning  []*Cluster
-	Destroy  []*Cluster
+	Good     []*CloudCluster
+	Warning  []*CloudCluster
+	Destroy  []*CloudCluster
 	BadVMs   []string
 }
 
