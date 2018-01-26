@@ -27,12 +27,12 @@ $ go get -u github.com/cockroachlabs/roachprod
 * Default settings create 4 VMs (`-n 4`) with 4 CPUs, 15GB memory
   (`--machine-type=n1-standard-4`), and local SSDs (`--local-ssd`).
 
-## Cluster quick-start using roachprod/roachperf
+## Cluster quick-start using roachprod
 
 ```bash
 # Create a cluster with 4 nodes and local SSD. The last node is used as a
-# load generator by roachperf.
-# Note that the cluster name must always begin with your username.
+# load generator for some tests. Note that the cluster name must always begin
+# with your username.
 export FULLNAME="${USER}-test"
 roachprod create ${FULLNAME} -n 4 --local-ssd
 
@@ -43,11 +43,11 @@ ssh-add ~/.ssh/google_compute_engine
 crl-stage-binaries ${FULLNAME} all scripts
 crl-stage-binaries ${FULLNAME} all cockroach
 
-# ...or using roachperf (e.g., for your locally-built binary).
-roachperf ${FULLNAME} put cockroach
+# ...or using roachprod directly (e.g., for your locally-built binary).
+roachprod put ${FULLNAME} cockroach
 
-# Start a cluster using roachperf.
-roachperf ${FULLNAME} start
+# Start a cluster.
+roachprod start ${FULLNAME}
 
 # Check the admin UI.
 # http://35.196.94.196:8080
@@ -98,14 +98,13 @@ Filesystem      Size  Used Avail Use% Mounted on
 /dev/sda1        49G  1.2G   48G   3% /
 ```
 
-### Interact using `roachperf`
-[roachperf] also consumes `~/.roachprod/hosts`.
+### Interact using `roachprod` directly
 
 ```
 # Add ssh-key
 $ ssh-add ~/.ssh/google_compute_engine
 
-$ roachperf marc-foo status
+$ roachprod status marc-foo
 marc-foo: status 3/3
    1: not running
    2: not running
@@ -144,6 +143,15 @@ See `roachprod help <command>` for further details.
 
 * Bigger loadgen VM (last instance)
 
+* Ease the creation of test metadata and then running a series of tests
+  using `roachprod <cluster> test <dir1> <dir2> ...`. Perhaps something like
+  `roachprod prepare <test> <binary>`.
+
+* Automatically detect stalled tests and restart tests upon unexpected
+  failures. Detection of stalled tests could be done by noticing zero output
+  for a period of time.
+
+* Detect crashed cockroach nodes.
+
 [cockroach-ephemeral]: https://console.cloud.google.com/home/dashboard?project=cockroach-ephemeral
 [gcloud installed]: https://cloud.google.com/sdk/downloads
-[roachperf]: https://github.com/cockroachdb/roachperf
