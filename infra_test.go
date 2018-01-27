@@ -1,15 +1,12 @@
 package main
 
 import (
-	"os"
-
 	"context"
 	"testing"
 	"time"
 
 	"golang.org/x/sync/errgroup" // TODO: vendor
 
-	"github.com/cockroachdb/cockroach/pkg/util/binfetcher"
 	"github.com/cockroachdb/roachprod/monitor"
 	"github.com/cockroachdb/roachprod/roachprodng"
 	"github.com/pkg/errors"
@@ -42,25 +39,18 @@ func TestPartitioningRoachmartBareBones(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// NB: this can be made a lot more ergonomical (pass options and a list of
-	// binaries, receive the file names plus a cleanup closure).
-	binaries := map[string]string{}
-	for _, binary := range []string{"cockroach", "workload"} {
-		binOpts := binfetcher.Options{
-			Binary:  binary,
-			Version: "LATEST",
-			GOOS:    "linux",
-			GOARCH:  "amd64",
-		}
-
-		loc, err := binfetcher.Download(ctx, binOpts)
-		if err != nil {
-			t.Fatal(errors.Wrap(err, binary))
-		}
-		defer func() {
-			_ = os.Remove(loc)
-		}()
-		binaries[binary] = loc
+	// NB: change this to LocalDevelopmentSource during development, so that
+	// it'll use the `cockroach` binary from the repo.
+	// NB: should make LocalDevelopmentSource smart enough to also mask out
+	// `cmd/workload` and other tools devs may conceivably want to change. Seems
+	// straightforward.
+	binaries, err := RemoteSource{
+		Version: "LATEST",
+		GOOS:    "linux",
+		GOARCH:  "amd64",
+	}.Download(ctx, "cockroach", "workload")
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	for dest, src := range binaries {
@@ -267,7 +257,7 @@ func TestNightlyStress(t *testing.T) {
 // symmetric across all of its nodes -- it's pure hardware).
 func TestThatIsAlsoACLICommand(t *testing.T) {
 	c, err := SetupNightlyCluster(TestHelperOptions{
-		Nodes: 5,
+		Nodes:   5,
 		Runners: 2,
 	})
 	if err != nil {
@@ -287,4 +277,3 @@ func TestThatIsAlsoACLICommand(t *testing.T) {
 // Run chaos. Corrupt disks. Disturb the network. All of these fit nicely enough
 // into the pattern but will need slightly different tooling, but at the end of
 // the day it won't be very different from what you've seen so far.
-
