@@ -30,6 +30,21 @@ sudo service cassandra stop;
 				return err
 			}
 
+		case "go":
+			// graphviz and rlwrap are useful for pprof
+			cmd := `
+sudo apt-get update
+sudo apt-get install -y graphviz rlwrap
+
+curl https://dl.google.com/go/go1.9.3.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
+echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh > /dev/null
+sudo chmod +x /etc/profile.d/go.sh
+`
+
+			if err := do("go", cmd); err != nil {
+				return err
+			}
+
 		case "mongodb":
 			return fmt.Errorf("TODO(peter): unimplemented: mongodb")
 
