@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 )
 
@@ -25,6 +24,7 @@ stopping and wiping of clusters along with running load generators.
 }
 
 var (
+	osUser         *user.User
 	numNodes       int
 	username       string
 	destroyAfter   time.Duration
@@ -196,17 +196,12 @@ Hint: use "roachprod sync" to update the list of available clusters.
 			}
 		}
 
-		user, err := user.Current()
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to lookup current user")
-		}
-
 		c.vms = make([]string, max+1)
 		c.users = make([]string, max+1)
 		c.localities = make([]string, max+1)
 		for i := range c.vms {
 			c.vms[i] = "localhost"
-			c.users[i] = user.Username
+			c.users[i] = osUser.Username
 		}
 
 		if err := findLocalBinary(); err != nil {
@@ -768,6 +763,13 @@ will perform %[1]s on:
     marc-test-8
     marc-test-9
 `, cmd.Name())
+	}
+
+	var err error
+	osUser, err = user.Current()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "unable to lookup current user: %s", err)
+		os.Exit(1)
 	}
 
 	if err := loadClusters(); err != nil {
