@@ -22,7 +22,7 @@ type EmailOpts struct {
 	Password string
 }
 
-var monitorEmailOpts EmailOpts
+var gcEmailOpts EmailOpts
 
 // Tracks all the clusters to notify a user about.
 type userNotification struct {
@@ -33,10 +33,10 @@ type userNotification struct {
 	BadVMs   []string
 }
 
-// monitorClusters performs the entire monitoring job.
-// It only fails on failure to perform cloud actions. All others actions (load/save file, email)
-// do not abort.
-func monitorClusters(cloud *Cloud, filename string, destroyAfter time.Duration) error {
+// gcClusters checks all cluster to see if they should be deleted. It only
+// fails on failure to perform cloud actions. All others actions (load/save
+// file, email) do not abort.
+func gcClusters(cloud *Cloud, filename string, destroyAfter time.Duration) error {
 	trackedClusters := loadTrackingFile(filename)
 
 	now := time.Now()
@@ -135,7 +135,7 @@ func loadTrackingFile(filename string) map[string]interface{} {
 }
 
 func writeTrackingFile(filename string, clusters []string) {
-	err := ioutil.WriteFile(filename, []byte(strings.Join(clusters, "\n")), 0755)
+	err := ioutil.WriteFile(filename, []byte(strings.Join(clusters, "\n")), 0644)
 	// Don't fail on errors.
 	if err != nil {
 		log.Printf("Failed to write tracking file %s: %v", filename, err)
@@ -238,7 +238,7 @@ func buildEmail(actions *userNotification) *gomail.Message {
 	}
 
 	m := gomail.NewMessage()
-	m.SetHeader("From", monitorEmailOpts.From)
+	m.SetHeader("From", gcEmailOpts.From)
 	m.SetHeader("To", fmt.Sprintf("%s%s", actions.Username, domain))
 	m.SetHeader("Subject", time.Now().Format("Roachprod clusters 2006-01-02"))
 	m.SetBody("text/html", buf.String())
@@ -247,18 +247,18 @@ func buildEmail(actions *userNotification) *gomail.Message {
 }
 
 func sendEmails(emails []*gomail.Message) {
-	if len(monitorEmailOpts.From) == 0 ||
-		len(monitorEmailOpts.Host) == 0 ||
-		monitorEmailOpts.Port == 0 ||
-		len(monitorEmailOpts.User) == 0 ||
-		len(monitorEmailOpts.Password) == 0 {
+	if len(gcEmailOpts.From) == 0 ||
+		len(gcEmailOpts.Host) == 0 ||
+		gcEmailOpts.Port == 0 ||
+		len(gcEmailOpts.User) == 0 ||
+		len(gcEmailOpts.Password) == 0 {
 		log.Printf("you must specify all --email options to send email")
 		return
 	}
 
 	dialer := gomail.NewDialer(
-		monitorEmailOpts.Host, monitorEmailOpts.Port,
-		monitorEmailOpts.User, monitorEmailOpts.Password)
+		gcEmailOpts.Host, gcEmailOpts.Port,
+		gcEmailOpts.User, gcEmailOpts.Password)
 
 	sender, err := dialer.Dial()
 	if err != nil {

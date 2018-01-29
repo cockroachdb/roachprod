@@ -409,9 +409,9 @@ func syncAll(cloud *Cloud) error {
 	return nil
 }
 
-var monitorCmd = &cobra.Command{
-	Use:   "monitor",
-	Short: "monitor VM status and warn/destroy. Sends email if properly configured.",
+var gcCmd = &cobra.Command{
+	Use:   "gc",
+	Short: "GC expired clusters; sends email if properly configured\n",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cloud, err := listCloud()
@@ -419,7 +419,7 @@ var monitorCmd = &cobra.Command{
 			return err
 		}
 
-		return monitorClusters(cloud, trackingFile, destroyAfter)
+		return gcClusters(cloud, trackingFile, destroyAfter)
 	},
 }
 
@@ -637,7 +637,7 @@ multiple nodes the destination file name will be prefixed with the node number.`
 
 var pgurlCmd = &cobra.Command{
 	Use:   "pgurl <cluster>",
-	Short: "generate pgurls for the nodes in a cluster",
+	Short: "generate pgurls for the nodes in a cluster\n",
 	Long:  `Generate pgurls for the nodes in a cluster.`,
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -698,8 +698,8 @@ var dumpCmd = &cobra.Command{
 func main() {
 	cobra.EnableCommandSorting = false
 
-	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, monitorCmd, statusCmd, syncCmd,
-		startCmd, stopCmd, runCmd, wipeCmd, testCmd, installCmd, putCmd, getCmd, pgurlCmd,
+	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
+		statusCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd, installCmd, putCmd, getCmd, pgurlCmd,
 		uploadCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
 		&insecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
@@ -719,13 +719,13 @@ func main() {
 
 	listCmd.Flags().BoolVarP(&listDetails, "details", "d", false, "Show cluster details")
 
-	monitorCmd.Flags().StringVar(&monitorEmailOpts.From, "email-from", "", "Address of the sender")
-	monitorCmd.Flags().StringVar(&monitorEmailOpts.Host, "email-host", "", "SMTP host")
-	monitorCmd.Flags().IntVar(&monitorEmailOpts.Port, "email-port", 587, "SMTP port")
-	monitorCmd.Flags().StringVar(&monitorEmailOpts.User, "email-user", "", "SMTP user")
-	monitorCmd.Flags().StringVar(&monitorEmailOpts.Password, "email-password", "", "SMTP password")
-	monitorCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
-	monitorCmd.Flags().StringVar(&trackingFile, "tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
+	gcCmd.Flags().StringVar(&gcEmailOpts.From, "email-from", "", "Address of the sender")
+	gcCmd.Flags().StringVar(&gcEmailOpts.Host, "email-host", "", "SMTP host")
+	gcCmd.Flags().IntVar(&gcEmailOpts.Port, "email-port", 587, "SMTP port")
+	gcCmd.Flags().StringVar(&gcEmailOpts.User, "email-user", "", "SMTP user")
+	gcCmd.Flags().StringVar(&gcEmailOpts.Password, "email-password", "", "SMTP password")
+	gcCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
+	gcCmd.Flags().StringVar(&trackingFile, "tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
 
 	startCmd.Flags().StringVarP(
 		&binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
