@@ -575,6 +575,16 @@ tag 6151ae1.`,
 	},
 }
 
+var workloadTestCmd = &cobra.Command{
+	Use:   "workload-test <cluster> <name> <workload-invocation>",
+	Short: "run one or more tests on a cluster",
+	Args:  cobra.MinimumNArgs(3),
+	Run: func(cmd *cobra.Command, args []string) {
+		clusterName, testName, workloadCmd := args[0], args[1], args[2:]
+		workloadTest(clusterName, `` /* dir */, testName, strings.Join(workloadCmd, ` `))
+	},
+}
+
 var installCmd = &cobra.Command{
 	Use:   "install <cluster> <software>",
 	Short: "install 3rd party software",
@@ -699,8 +709,8 @@ func main() {
 	cobra.EnableCommandSorting = false
 
 	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
-		statusCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd, installCmd, putCmd, getCmd, pgurlCmd,
-		uploadCmd, webCmd, dumpCmd)
+		statusCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd, workloadTestCmd, installCmd, putCmd,
+		getCmd, pgurlCmd, uploadCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
 		&insecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 

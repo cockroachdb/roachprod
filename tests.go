@@ -487,6 +487,64 @@ func nightly(clusterName, dir string) {
 	c.stop()
 }
 
+func workloadTest(clusterName, dir, name, cmd string) {
+	var existing *testMetadata
+	if dir != "" {
+		existing = &testMetadata{}
+		if err := loadJSON(filepath.Join(dir, "metadata"), existing); err != nil {
+			log.Fatal(err)
+		}
+		clusterName = existing.Cluster
+		nodeArgs = existing.Args
+	}
+
+	c := testCluster(clusterName)
+	defer c.stop()
+	m := testMetadata{
+		Bin:     clusterVersion(c),
+		Cluster: c.name,
+		Nodes:   c.nodes,
+		Env:     c.env,
+		Args:    c.args,
+		Test:    "workload-test",
+		Date:    time.Now().Format("2006-01-02T15_04_05"),
+	}
+	if existing == nil {
+		dir = testDir("workload-test", m.Bin)
+		saveJSON(filepath.Join(dir, "metadata"), m)
+	} else {
+		if m.Bin != existing.Bin {
+			if err := putBin(c, dir); err != nil {
+				log.Fatalf("cockroach binary changed: %s != %s\n%s", m.Bin, existing.Bin, err)
+			}
+		}
+		m.Nodes = existing.Nodes
+		m.Env = existing.Env
+	}
+	fmt.Printf("%s: %s\n", c.name, dir)
+	getBin(c, dir)
+
+	if run, err := loadTestRun(dir, name); err == nil && run != nil {
+		return
+	}
+
+	err := func() error {
+		f, err := os.Create(filepath.Join(dir, name))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		c.wipe()
+		c.start()
+		stdout := io.MultiWriter(f, os.Stdout)
+		stderr := io.MultiWriter(f, os.Stderr)
+		return c.runLoad(cmd, stdout, stderr)
+	}()
+	if err != nil && !isSigKill(err) {
+		fmt.Printf("%s\n", err)
+	}
+}
+
 func splits(clusterName, dir string) {
 	var existing *testMetadata
 	if dir != "" {
