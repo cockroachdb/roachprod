@@ -12,7 +12,7 @@ installations (`gcloud components update`).
 To build and install into `$GOPATH/bin`:
 
 ```
-$ go get -u github.com/cockroachlabs/roachprod
+$ go get -u github.com/cockroachdb/roachprod
 ```
 
 ## Summary
@@ -50,7 +50,7 @@ roachprod put ${FULLNAME} cockroach
 roachprod start ${FULLNAME}
 
 # Check the admin UI.
-# http://35.196.94.196:8080
+# http://35.196.94.196:26258
 
 # Open a SQL connection to the first node.
 cockroach sql --insecure --host=35.196.94.196
