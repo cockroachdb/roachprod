@@ -175,6 +175,71 @@ fi
 	}
 }
 
+func (c *syncedCluster) monitor() {
+	var wg sync.WaitGroup
+	nodes := c.serverNodes()
+	wg.Add(len(nodes))
+
+	for i := range nodes {
+		go func(i int) {
+			defer wg.Done()
+
+			session, err := newSSHSession(c.user(nodes[i]), c.host(nodes[i]))
+			if err != nil {
+				// TODO(peter): synchronize output
+				fmt.Printf("%d: %v\n", nodes[i], err)
+				return
+			}
+			defer session.Close()
+
+			go func() {
+				r, err := session.StdoutPipe()
+				if err != nil {
+					fmt.Printf("%d: %v\n", nodes[i], err)
+					return
+				}
+				// TODO(peter): synchronize output
+				io.Copy(os.Stdout, r)
+			}()
+
+			// On each monitored node, we loop looking for a cockroach process. In
+			// order to avoid polling with lsof, if we find a live process we use nc
+			// (netcat) to connect to the rpc port which will block until the server
+			// either decides to kill the connection or the process is killed.
+			cmd := fmt.Sprintf(`
+lastpid=0
+while :; do
+  pid=$(lsof -i :%[1]d -sTCP:LISTEN | awk '!/COMMAND/ {print $2}')
+  if [ "${pid}" != "${lastpid}" ]; then
+    if [ -n "${lastpid}" ]; then
+      echo %[2]d: dead
+    fi
+    lastpid=${pid}
+    if [ -n "${pid}" ]; then
+      echo %[2]d: ${pid}
+    fi
+  fi
+
+  if [ -n "${lastpid}" ]; then
+    nc localhost %[1]d >/dev/null 2>&1
+  else
+    sleep 1
+  fi
+done
+`,
+				cockroach{}.nodePort(c, nodes[i]), nodes[i])
+
+			if err := session.Run(cmd); err != nil {
+				// TODO(peter): synchronize output
+				fmt.Printf("%d: %v\n", nodes[i], err)
+				return
+			}
+		}(i)
+	}
+
+	wg.Wait()
+}
+
 func (c *syncedCluster) run(w io.Writer, nodes []int, title, cmd string) error {
 	display := fmt.Sprintf("%s: %s", c.name, title)
 	errors := make([]error, len(nodes))
