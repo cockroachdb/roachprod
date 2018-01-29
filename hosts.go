@@ -5,7 +5,6 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"os/user"
 	"path"
 	"path/filepath"
 	"strings"
@@ -28,14 +27,6 @@ func initHostDir() error {
 func syncHosts(cloud *Cloud) error {
 	hd := os.ExpandEnv(defaultHostDir)
 
-	// We need the username used to log into instances.
-	// gcloud uses the local username rather than the account username.
-	user, err := user.Current()
-	if err != nil {
-		log.Printf("skipping hosts config due to bad username: %v", err)
-		return nil
-	}
-
 	// Write all host files.
 	for _, c := range cloud.Clusters {
 		filename := path.Join(hd, c.Name)
@@ -48,8 +39,10 @@ func syncHosts(cloud *Cloud) error {
 		tw := tabwriter.NewWriter(file, 0, 8, 2, ' ', 0)
 		tw.Write([]byte("# user@host\tlocality\n"))
 		for _, vm := range c.VMs {
+			// N.B. gcloud uses the local username to log into instances rather
+			// than the username on the authenticated Google account.
 			tw.Write([]byte(fmt.Sprintf(
-				"%s@%s\t%s\n", user.Username, vm.PublicIP, vm.locality())))
+				"%s@%s\t%s\n", osUser.Username, vm.PublicIP, vm.locality())))
 		}
 		if err := tw.Flush(); err != nil {
 			return errors.Wrapf(err, "problem writing file %s", filename)
@@ -123,11 +116,7 @@ func loadClusters() error {
 			parts := strings.Split(fields[0], "@")
 			var n, u string
 			if len(parts) == 1 {
-				user, err := user.Current()
-				if err != nil {
-					return errors.Wrapf(err, "failed to lookup current user")
-				}
-				u = user.Username
+				u = osUser.Username
 				n = parts[0]
 			} else if len(parts) == 2 {
 				u = parts[0]
