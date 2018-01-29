@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/pkg/errors"
@@ -353,12 +354,17 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
+		// Align columns left and separate with at least two spaces.
+		tw := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
 		for _, c := range cloud.Clusters {
 			if listDetails {
 				c.PrintDetails()
 			} else {
-				fmt.Printf("%s\n", c)
+				fmt.Fprintf(tw, "%s:\t%d\t(%s)\n", c.Name, len(c.VMs), c.LifetimeRemaining().Round(time.Second))
 			}
+		}
+		if err := tw.Flush(); err != nil {
+			return err
 		}
 
 		if listDetails {
