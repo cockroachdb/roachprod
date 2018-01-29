@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -37,25 +38,48 @@ func getKnownHosts() ssh.HostKeyCallback {
 	return knownHosts
 }
 
-func newSSHClient(user, host string) (*ssh.Client, net.Conn, error) {
+func getSSHAgentSigners() []ssh.Signer {
 	const authSockEnv = "SSH_AUTH_SOCK"
 	agentSocket := os.Getenv(authSockEnv)
 	if agentSocket == "" {
-		return nil, nil, fmt.Errorf("%s empty", authSockEnv)
+		return nil
 	}
 	sock, err := net.Dial("unix", agentSocket)
 	if err != nil {
-		return nil, nil, err
+		log.Printf("SSH_AUTH_SOCK set but unable to connect to agent: %s", err)
+		return nil
 	}
 	agent := agent.NewClient(sock)
 	signers, err := agent.Signers()
 	if err != nil {
-		return nil, nil, err
+		log.Printf("unable to retrieve keys from agent: %s", err)
+		return nil
+	}
+	return signers
+}
+
+func getDefaultSSHKeySigners() []ssh.Signer {
+	path := filepath.Join(osUser.HomeDir, ".ssh", "google_compute_engine")
+	key, err := ioutil.ReadFile(path)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("unable to read SSH key %q: %s", path, err)
+		}
+		return nil
 	}
 
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		log.Printf("unable to parse SSH key %q: %s", path, err)
+		return nil
+	}
+	return []ssh.Signer{signer}
+}
+
+func newSSHClient(user, host string) (*ssh.Client, net.Conn, error) {
 	config := &ssh.ClientConfig{
 		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signers...)},
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(sshState.signers...)},
 		HostKeyCallback: getKnownHosts(),
 	}
 	config.SetDefaults()
@@ -77,18 +101,30 @@ type sshClient struct {
 	*ssh.Client
 }
 
-var clients = make(map[string]*sshClient)
-var clientsMu sync.Mutex
+var sshState = struct {
+	signers     []ssh.Signer
+	signersInit sync.Once
+
+	clients  map[string]*sshClient
+	clientMu sync.Mutex
+}{
+	clients: map[string]*sshClient{},
+}
 
 func newSSHSession(user, host string) (*ssh.Session, error) {
-	clientsMu.Lock()
+	sshState.clientMu.Lock()
 	target := fmt.Sprintf("%s@%s", user, host)
-	client := clients[target]
+	client := sshState.clients[target]
 	if client == nil {
 		client = &sshClient{}
-		clients[target] = client
+		sshState.clients[target] = client
 	}
-	clientsMu.Unlock()
+	sshState.clientMu.Unlock()
+
+	sshState.signersInit.Do(func() {
+		sshState.signers = append(sshState.signers, getSSHAgentSigners()...)
+		sshState.signers = append(sshState.signers, getDefaultSSHKeySigners()...)
+	})
 
 	client.Lock()
 	defer client.Unlock()
