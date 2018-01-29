@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"log"
@@ -173,6 +174,77 @@ fi
 	for i, r := range results {
 		fmt.Printf("  %2d: %s\n", c.nodes[i], r)
 	}
+}
+
+type nodeMonitorInfo struct {
+	index int
+	msg   string
+}
+
+func (c *syncedCluster) monitor() chan nodeMonitorInfo {
+	ch := make(chan nodeMonitorInfo)
+	nodes := c.serverNodes()
+
+	for i := range nodes {
+		go func(i int) {
+			session, err := newSSHSession(c.user(nodes[i]), c.host(nodes[i]))
+			if err != nil {
+				ch <- nodeMonitorInfo{nodes[i], fmt.Sprint(err)}
+				return
+			}
+			defer session.Close()
+
+			go func() {
+				p, err := session.StdoutPipe()
+				if err != nil {
+					ch <- nodeMonitorInfo{nodes[i], fmt.Sprint(err)}
+					return
+				}
+				r := bufio.NewReader(p)
+				for {
+					line, _, err := r.ReadLine()
+					if err == io.EOF {
+						return
+					}
+					ch <- nodeMonitorInfo{nodes[i], string(line)}
+				}
+			}()
+
+			// On each monitored node, we loop looking for a cockroach process. In
+			// order to avoid polling with lsof, if we find a live process we use nc
+			// (netcat) to connect to the rpc port which will block until the server
+			// either decides to kill the connection or the process is killed.
+			cmd := fmt.Sprintf(`
+lastpid=0
+while :; do
+  pid=$(lsof -i :%[1]d -sTCP:LISTEN | awk '!/COMMAND/ {print $2}')
+  if [ "${pid}" != "${lastpid}" ]; then
+    if [ -n "${lastpid}" -a -z "${pid}" ]; then
+      echo dead
+    fi
+    lastpid=${pid}
+    if [ -n "${pid}" ]; then
+      echo ${pid}
+    fi
+  fi
+
+  if [ -n "${lastpid}" ]; then
+    nc localhost %[1]d >/dev/null 2>&1
+  else
+    sleep 1
+  fi
+done
+`,
+				cockroach{}.nodePort(c, nodes[i]))
+
+			if err := session.Run(cmd); err != nil {
+				ch <- nodeMonitorInfo{nodes[i], fmt.Sprint(err)}
+				return
+			}
+		}(i)
+	}
+
+	return ch
 }
 
 func (c *syncedCluster) run(w io.Writer, nodes []int, title, cmd string) error {
