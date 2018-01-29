@@ -487,6 +487,39 @@ func nightly(clusterName, dir string) {
 	c.stop()
 }
 
+func workloadTest(clusterName, dir, name, cmd string) {
+	c := testCluster(clusterName)
+	defer c.stop()
+	m := testMetadata{
+		Bin:     clusterVersion(c),
+		Cluster: c.name,
+		Nodes:   c.nodes,
+		Env:     c.env,
+		Args:    c.args,
+		Test:    "workload-test",
+		Date:    time.Now().Format("2006-01-02T15_04_05"),
+	}
+	dir = testDir("workload-test", m.Bin)
+	saveJSON(filepath.Join(dir, "metadata"), m)
+	fmt.Printf("%s: %s\n", c.name, dir)
+
+	err := func() error {
+		f, err := os.Create(filepath.Join(dir, name))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+		c.wipe()
+		c.start()
+		stdout := io.MultiWriter(f, os.Stdout)
+		stderr := io.MultiWriter(f, os.Stderr)
+		return c.runLoad(cmd, stdout, stderr)
+	}()
+	if err != nil && !isSigKill(err) {
+		fmt.Printf("%s\n", err)
+	}
+}
+
 func splits(clusterName, dir string) {
 	var existing *testMetadata
 	if dir != "" {
