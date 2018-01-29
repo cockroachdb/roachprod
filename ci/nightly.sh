@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-go get ./...
 go install
 
 curl -O https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-182.0.0-linux-x86_64.tar.gz
