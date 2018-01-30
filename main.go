@@ -41,13 +41,17 @@ var (
 	clusters       = map[string]*syncedCluster{}
 )
 
+func allNodes(total int) []int {
+	r := make([]int, total)
+	for i := range r {
+		r[i] = i + 1
+	}
+	return r
+}
+
 func listNodes(s string, total int) ([]int, error) {
 	if s == "all" {
-		r := make([]int, total)
-		for i := range r {
-			r[i] = i + 1
-		}
-		return r, nil
+		return allNodes(total), nil
 	}
 
 	m := map[int]bool{}
@@ -197,9 +201,9 @@ Hint: use "roachprod sync" to update the list of available clusters.
 			}
 		}
 
-		c.vms = make([]string, max+1)
-		c.users = make([]string, max+1)
-		c.localities = make([]string, max+1)
+		c.vms = make([]string, max)
+		c.users = make([]string, max)
+		c.localities = make([]string, max)
 		for i := range c.vms {
 			c.vms[i] = "localhost"
 			c.users[i] = osUser.Username
@@ -701,7 +705,7 @@ var pgurlCmd = &cobra.Command{
 
 		var urls []string
 		for i, ip := range ips {
-			urls = append(urls, c.impl.nodeURL(c, ip, c.impl.nodePort(c, c.nodes[i])))
+			urls = append(urls, c.impl.nodeURL(c, ip, c.impl.nodePort(c, nodes[i])))
 		}
 		fmt.Println(strings.Join(urls, " "))
 		return nil
@@ -770,6 +774,9 @@ func main() {
 	gcCmd.Flags().StringVar(&gcEmailOpts.Password, "email-password", "", "SMTP password")
 	gcCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
 	gcCmd.Flags().StringVar(&trackingFile, "tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
+
+	sshCmd.Flags().BoolVar(
+		&secure, "secure", false, "use a secure cluster")
 
 	startCmd.Flags().StringVarP(
 		&binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
