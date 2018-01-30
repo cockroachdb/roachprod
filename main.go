@@ -648,6 +648,20 @@ multiple nodes the destination file name will be prefixed with the node number.`
 	},
 }
 
+var sshCmd = &cobra.Command{
+	Use:   "ssh <cluster> [args]",
+	Short: "ssh to a node on a remote cluster",
+	Long:  `Ssh to a node on a remote cluster.`,
+	Args:  cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := newCluster(args[0], false /* reserveLoadGen */)
+		if err != nil {
+			return err
+		}
+		return c.ssh(args[1:])
+	},
+}
+
 var pgurlCmd = &cobra.Command{
 	Use:   "pgurl <cluster>",
 	Short: "generate pgurls for the nodes in a cluster\n",
@@ -713,7 +727,7 @@ func main() {
 
 	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
 		statusCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd, workloadTestCmd, installCmd, putCmd,
-		getCmd, pgurlCmd, uploadCmd, webCmd, dumpCmd)
+		getCmd, sshCmd, pgurlCmd, uploadCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
 		&insecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 
