@@ -513,6 +513,23 @@ var statusCmd = &cobra.Command{
 	},
 }
 
+var monitorCmd = &cobra.Command{
+	Use:   "monitor",
+	Short: "monitor the status of a cluster",
+	Long:  `Continuously monitor the status of a cluster.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := newCluster(args[0], false /* reserveLoadGen */)
+		if err != nil {
+			return err
+		}
+		for i := range c.monitor() {
+			fmt.Printf("%d: %s\n", i.index, i.msg)
+		}
+		return nil
+	},
+}
+
 var wipeCmd = &cobra.Command{
 	Use:   "wipe <cluster>",
 	Short: "wipe a cluster",
@@ -726,8 +743,8 @@ func main() {
 	cobra.EnableCommandSorting = false
 
 	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
-		statusCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd, workloadTestCmd, installCmd, putCmd,
-		getCmd, sshCmd, pgurlCmd, uploadCmd, webCmd, dumpCmd)
+		statusCmd, monitorCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd, workloadTestCmd,
+		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, uploadCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
 		&insecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 
