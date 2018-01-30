@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"os/exec"
 	"os/signal"
 	"sort"
 	"strings"
@@ -456,6 +457,24 @@ func (c *syncedCluster) get(src, dest string) {
 	if haveErr {
 		log.Fatal("failed")
 	}
+}
+
+func (c *syncedCluster) ssh(args []string) error {
+	if len(c.nodes) != 1 {
+		return fmt.Errorf("invalid number of nodes for ssh: %d", c.nodes)
+	}
+
+	allArgs := []string{fmt.Sprintf("%s@%s", c.user(c.nodes[0]), c.host(c.nodes[0]))}
+	allArgs = append(allArgs, args...)
+
+	cmd := exec.Command(`ssh`, allArgs...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v", err)
+	}
+	return nil
 }
 
 func (c *syncedCluster) stopLoad() {
