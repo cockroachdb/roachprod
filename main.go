@@ -712,17 +712,6 @@ var pgurlCmd = &cobra.Command{
 	},
 }
 
-var uploadCmd = &cobra.Command{
-	Use:   "upload <testdir> <backend>",
-	Short: "upload test data to a backend",
-	Long: `
-Upload the artifacts from a test. Currently supports s3 only as a backend.
-`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		return upload(args)
-	},
-}
-
 var webCmd = &cobra.Command{
 	Use:   "web <testdir> [<testdir>]",
 	Short: "visualize and compare test output",
@@ -748,7 +737,7 @@ func main() {
 
 	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
 		statusCmd, monitorCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd, workloadTestCmd,
-		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, uploadCmd, webCmd, dumpCmd)
+		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
 		&insecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 
