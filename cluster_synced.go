@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
 	"os/exec"
 	"os/signal"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -531,13 +533,67 @@ func (c *syncedCluster) get(src, dest string) {
 	}
 }
 
+var parameterRe = regexp.MustCompile(`{[^}]*}`)
+var pgurlRe = regexp.MustCompile(`{pgurl(:[-0-9]+)?}`)
+
+func (c *syncedCluster) pgurls(nodes []int) map[int]string {
+	ips := make([]string, len(nodes))
+	c.parallel("", len(nodes), 0, func(i int) ([]byte, error) {
+		var err error
+		ips[i], err = c.getInternalIP(nodes[i])
+		return nil, err
+	})
+
+	m := make(map[int]string, len(ips))
+	for i, ip := range ips {
+		m[nodes[i]] = c.impl.nodeURL(c, ip, c.impl.nodePort(c, nodes[i]))
+	}
+	return m
+}
+
 func (c *syncedCluster) ssh(args []string) error {
 	if len(c.nodes) != 1 {
 		return fmt.Errorf("invalid number of nodes for ssh: %d", c.nodes)
 	}
 
 	allArgs := []string{fmt.Sprintf("%s@%s", c.user(c.nodes[0]), c.host(c.nodes[0]))}
-	allArgs = append(allArgs, args...)
+
+	// Perform template expansion on the arguments. Currently, we only expand
+	// "{pgurl:x}" templates, though additional expansions could be added.
+	var urls map[int]string
+	for _, arg := range args {
+		arg := parameterRe.ReplaceAllStringFunc(arg, func(s string) string {
+			m := pgurlRe.FindStringSubmatch(s)
+			if m == nil {
+				return s
+			}
+
+			if m[1] == "" {
+				m[1] = "all"
+			} else {
+				m[1] = m[1][1:]
+			}
+
+			if urls == nil {
+				urls = c.pgurls(allNodes(len(c.vms)))
+			}
+
+			nodes, err := listNodes(m[1], len(c.vms))
+			if err != nil {
+				return err.Error()
+			}
+
+			var result []string
+			for _, i := range nodes {
+				if url, ok := urls[i]; ok {
+					result = append(result, url)
+				}
+			}
+			return strings.Join(result, " ")
+		})
+
+		allArgs = append(allArgs, strings.Split(arg, " ")...)
+	}
 
 	cmd := exec.Command(`ssh`, allArgs...)
 	cmd.Stdin = os.Stdin
@@ -604,6 +660,11 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 	}()
 
 	var writer uiWriter
+	out := io.Writer(os.Stdout)
+	if display == "" {
+		out = ioutil.Discard
+	}
+
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 	complete := make([]bool, count)
@@ -639,7 +700,7 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 			fmt.Fprintf(&writer, " %s", spinner[spinnerIdx%len(spinner)])
 		}
 		fmt.Fprintf(&writer, "\n")
-		writer.Flush(os.Stdout)
+		writer.Flush(out)
 		spinnerIdx++
 	}
 
