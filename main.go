@@ -670,10 +670,11 @@ multiple nodes the destination file name will be prefixed with the node number.`
 }
 
 var sshCmd = &cobra.Command{
-	Use:   "ssh <cluster> [args]",
-	Short: "ssh to a node on a remote cluster",
-	Long:  `Ssh to a node on a remote cluster.`,
-	Args:  cobra.MinimumNArgs(1),
+	Use:          "ssh <cluster> [args]",
+	Short:        "ssh to a node on a remote cluster",
+	Long:         `SSH to a node on a remote cluster.`,
+	Args:         cobra.MinimumNArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
