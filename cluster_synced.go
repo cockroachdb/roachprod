@@ -599,10 +599,7 @@ func (c *syncedCluster) ssh(args []string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "%v", err)
-	}
-	return nil
+	return cmd.Run()
 }
 
 func (c *syncedCluster) stopLoad() {
