@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -556,7 +557,10 @@ func (c *syncedCluster) ssh(args []string) error {
 		return fmt.Errorf("invalid number of nodes for ssh: %d", c.nodes)
 	}
 
-	allArgs := []string{fmt.Sprintf("%s@%s", c.user(c.nodes[0]), c.host(c.nodes[0]))}
+	allArgs := []string{
+		fmt.Sprintf("%s@%s", c.user(c.nodes[0]), c.host(c.nodes[0])),
+		"-i", filepath.Join(osUser.HomeDir, ".ssh", "google_compute_engine"),
+	}
 
 	// Perform template expansion on the arguments. Currently, we only expand
 	// "{pgurl:x}" templates, though additional expansions could be added.
