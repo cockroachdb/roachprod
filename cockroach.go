@@ -29,12 +29,13 @@ func (r cockroach) start(c *syncedCluster) {
 			args = append(args, "--insecure")
 		}
 		dir := "/mnt/data1/cockroach"
+		logDir := "${HOME}/logs"
 		if c.isLocal() {
 			dir = fmt.Sprintf("${HOME}/local/cockroach%d", nodes[i])
+			logDir = fmt.Sprintf("${HOME}/local/cockroach%d/logs", nodes[i])
 		}
 		args = append(args, "--store=path="+dir)
-		args = append(args, "--logtostderr")
-		args = append(args, "--log-dir=")
+		args = append(args, "--log-dir="+logDir)
 		args = append(args, "--background")
 		cache := 25
 		if c.isLocal() {
@@ -54,9 +55,9 @@ func (r cockroach) start(c *syncedCluster) {
 			args = append(args, fmt.Sprintf("--join=%s:%d", host1, r.nodePort(c, 1)))
 		}
 		args = append(args, c.args...)
-		cmd := "mkdir -p " + dir + "/logs; " +
+		cmd := "mkdir -p " + logDir + "; " +
 			c.env + " " + binary + " start " + strings.Join(args, " ") +
-			" > " + dir + "/logs/cockroach.stdout 2> " + dir + "/logs/cockroach.stderr"
+			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr"
 		return session.CombinedOutput(cmd)
 	})
 
