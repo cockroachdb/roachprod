@@ -437,7 +437,12 @@ func (c *syncedCluster) put(src, dest string) {
 		close(results)
 	}()
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+	var ticker *time.Ticker
+	if isStdoutTerminal {
+		ticker = time.NewTicker(100 * time.Millisecond)
+	} else {
+		ticker = time.NewTicker(1000 * time.Millisecond)
+	}
 	defer ticker.Stop()
 	haveErr := false
 
@@ -447,6 +452,9 @@ func (c *syncedCluster) put(src, dest string) {
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
+			if !isStdoutTerminal {
+				fmt.Printf(".")
+			}
 		case r, ok := <-results:
 			done = !ok
 			if ok {
@@ -460,19 +468,30 @@ func (c *syncedCluster) put(src, dest string) {
 				linesMu.Unlock()
 			}
 		}
+		if isStdoutTerminal {
+			linesMu.Lock()
+			for i := range lines {
+				fmt.Fprintf(&writer, "  %2d: ", c.nodes[i])
+				if lines[i] != "" {
+					fmt.Fprintf(&writer, "%s", lines[i])
+				} else {
+					fmt.Fprintf(&writer, "%s", spinner[spinnerIdx%len(spinner)])
+				}
+				fmt.Fprintf(&writer, "\n")
+			}
+			linesMu.Unlock()
+			writer.Flush(os.Stdout)
+			spinnerIdx++
+		}
+	}
+
+	if !isStdoutTerminal {
+		fmt.Printf("\n")
 		linesMu.Lock()
 		for i := range lines {
-			fmt.Fprintf(&writer, "  %2d: ", c.nodes[i])
-			if lines[i] != "" {
-				fmt.Fprintf(&writer, "%s", lines[i])
-			} else {
-				fmt.Fprintf(&writer, "%s", spinner[spinnerIdx%len(spinner)])
-			}
-			fmt.Fprintf(&writer, "\n")
+			fmt.Printf("  %2d: %s\n", c.nodes[i], lines[i])
 		}
 		linesMu.Unlock()
-		writer.Flush(os.Stdout)
-		spinnerIdx++
 	}
 
 	if haveErr {
@@ -522,7 +541,12 @@ func (c *syncedCluster) get(src, dest string) {
 		close(results)
 	}()
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+	var ticker *time.Ticker
+	if isStdoutTerminal {
+		ticker = time.NewTicker(100 * time.Millisecond)
+	} else {
+		ticker = time.NewTicker(1000 * time.Millisecond)
+	}
 	defer ticker.Stop()
 	haveErr := false
 
@@ -532,6 +556,9 @@ func (c *syncedCluster) get(src, dest string) {
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
+			if !isStdoutTerminal {
+				fmt.Printf(".")
+			}
 		case r, ok := <-results:
 			done = !ok
 			if ok {
@@ -545,19 +572,30 @@ func (c *syncedCluster) get(src, dest string) {
 				linesMu.Unlock()
 			}
 		}
+		if isStdoutTerminal {
+			linesMu.Lock()
+			for i := range lines {
+				fmt.Fprintf(&writer, "  %2d: ", c.nodes[i])
+				if lines[i] != "" {
+					fmt.Fprintf(&writer, "%s", lines[i])
+				} else {
+					fmt.Fprintf(&writer, "%s", spinner[spinnerIdx%len(spinner)])
+				}
+				fmt.Fprintf(&writer, "\n")
+			}
+			linesMu.Unlock()
+			writer.Flush(os.Stdout)
+			spinnerIdx++
+		}
+	}
+
+	if !isStdoutTerminal {
+		fmt.Printf("\n")
 		linesMu.Lock()
 		for i := range lines {
-			fmt.Fprintf(&writer, "  %2d: ", c.nodes[i])
-			if lines[i] != "" {
-				fmt.Fprintf(&writer, "%s", lines[i])
-			} else {
-				fmt.Fprintf(&writer, "%s", spinner[spinnerIdx%len(spinner)])
-			}
-			fmt.Fprintf(&writer, "\n")
+			fmt.Printf("  %2d: %s\n", c.nodes[i], lines[i])
 		}
 		linesMu.Unlock()
-		writer.Flush(os.Stdout)
-		spinnerIdx++
 	}
 
 	if haveErr {
@@ -698,7 +736,14 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 		out = ioutil.Discard
 	}
 
-	ticker := time.NewTicker(100 * time.Millisecond)
+	var ticker *time.Ticker
+	if isStdoutTerminal {
+		ticker = time.NewTicker(100 * time.Millisecond)
+	} else {
+		ticker = time.NewTicker(1000 * time.Millisecond)
+		fmt.Fprintf(out, "%s", display)
+	}
+
 	defer ticker.Stop()
 	complete := make([]bool, count)
 	var failed []result
@@ -709,6 +754,9 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
+			if !isStdoutTerminal {
+				fmt.Fprintf(out, ".")
+			}
 		case r, ok := <-results:
 			if r.err != nil {
 				failed = append(failed, r)
@@ -721,20 +769,27 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 				startNext()
 			}
 		}
-		fmt.Fprint(&writer, display)
-		var n int
-		for i := range complete {
-			if complete[i] {
-				n++
+
+		if isStdoutTerminal {
+			fmt.Fprint(&writer, display)
+			var n int
+			for i := range complete {
+				if complete[i] {
+					n++
+				}
 			}
+			fmt.Fprintf(&writer, " %d/%d", n, len(complete))
+			if !done {
+				fmt.Fprintf(&writer, " %s", spinner[spinnerIdx%len(spinner)])
+			}
+			fmt.Fprintf(&writer, "\n")
+			writer.Flush(out)
+			spinnerIdx++
 		}
-		fmt.Fprintf(&writer, " %d/%d", n, len(complete))
-		if !done {
-			fmt.Fprintf(&writer, " %s", spinner[spinnerIdx%len(spinner)])
-		}
-		fmt.Fprintf(&writer, "\n")
-		writer.Flush(out)
-		spinnerIdx++
+	}
+
+	if !isStdoutTerminal {
+		fmt.Fprintf(out, "\n")
 	}
 
 	if len(failed) > 0 {
