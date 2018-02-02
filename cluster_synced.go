@@ -286,6 +286,37 @@ func (c *syncedCluster) run(w io.Writer, nodes []int, title, cmd string) error {
 	return nil
 }
 
+// TODO(peter): add a timeout to wait so we don't spin here indefinitely if
+// there is a problem with one of the nodes. We only need to do this if we see
+// problems here when creating clusters.
+func (c *syncedCluster) wait() error {
+	display := fmt.Sprintf("%s: waiting for nodes to start", c.name)
+	errors := make([]error, len(c.nodes))
+	c.parallel(display, len(c.nodes), 0, func(i int) ([]byte, error) {
+		for {
+			session, err := newSSHSession(c.user(c.nodes[i]), c.host(c.nodes[i]))
+			if err != nil {
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+			defer session.Close()
+
+			if _, err := session.CombinedOutput("echo OK"); err != nil {
+				errors[i] = err
+			}
+			return nil, nil
+		}
+	})
+
+	for i, err := range errors {
+		if err != nil {
+			fmt.Printf("  %2d: %v\n", c.nodes[i], err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (c *syncedCluster) cockroachVersions() map[string]int {
 	sha := make(map[string]int)
 	var mu sync.Mutex
@@ -560,6 +591,7 @@ func (c *syncedCluster) ssh(args []string) error {
 	allArgs := []string{
 		fmt.Sprintf("%s@%s", c.user(c.nodes[0]), c.host(c.nodes[0])),
 		"-i", filepath.Join(osUser.HomeDir, ".ssh", "google_compute_engine"),
+		"-o", "StrictHostKeyChecking=no",
 	}
 
 	// Perform template expansion on the arguments. Currently, we only expand
