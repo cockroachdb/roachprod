@@ -4,8 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	isatty "github.com/mattn/go-isatty"
 )
+
+var isStdoutTerminal = isatty.IsTerminal(os.Stdout.Fd())
 
 type uiWriter struct {
 	buf       bytes.Buffer
