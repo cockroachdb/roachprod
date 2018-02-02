@@ -288,18 +288,41 @@ var createCmd = &cobra.Command{
 
 		fmt.Println("OK")
 
-		cloud, err = listCloud()
-		if err != nil {
-			return err
+		{
+			cloud, err = listCloud()
+			if err != nil {
+				return err
+			}
+
+			c, ok := cloud.Clusters[clusterName]
+			if !ok {
+				return fmt.Errorf("could not find %s in list of cluster", clusterName)
+			}
+			c.PrintDetails()
+
+			if err := syncAll(cloud); err != nil {
+				return err
+			}
 		}
 
-		c, ok := cloud.Clusters[clusterName]
-		if !ok {
-			return fmt.Errorf("could not find %s in list of cluster", clusterName)
-		}
-		c.PrintDetails()
+		{
+			// Wait for the nodes in the cluster to start.
+			clusters = map[string]*syncedCluster{}
+			if err := loadClusters(); err != nil {
+				return err
+			}
 
-		return syncAll(cloud)
+			c, err := newCluster(clusterName, false)
+			if err != nil {
+				return err
+			}
+
+			if err := c.wait(); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	},
 }
 
