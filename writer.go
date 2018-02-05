@@ -4,8 +4,13 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"strings"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
+
+var isStdoutTerminal = terminal.IsTerminal(int(os.Stdout.Fd()))
 
 type uiWriter struct {
 	buf       bytes.Buffer
