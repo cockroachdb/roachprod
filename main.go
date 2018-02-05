@@ -793,6 +793,8 @@ func main() {
 
 	startCmd.Flags().StringVarP(
 		&binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
+	startCmd.Flags().BoolVar(
+		&startOpts.sequential, "sequential", false, "start nodes sequentially so node IDs match hostnames")
 
 	testCmd.Flags().StringVarP(
 		&binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
