@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,6 +12,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -200,7 +201,9 @@ func scpPut(src, dest string, progress func(float64), session *ssh.Session) erro
 	}
 }
 
-// TODO(peter): Support retrieving a directory.
+// TODO(benesch): Make progress handling for directories less confusing. The
+// SCP protocol makes this challenging, as it does not send the total size of
+// all files.
 func scpGet(src, dest string, progress func(float64), session *ssh.Session) error {
 	errCh := make(chan error, 1)
 	go func() {
@@ -216,49 +219,85 @@ func scpGet(src, dest string, progress func(float64), session *ssh.Session) erro
 		}
 		defer wp.Close()
 
-		fmt.Fprint(wp, "\x00")
-
 		r := bufio.NewReader(rp)
-		line, _, err := r.ReadLine()
-		if err != nil {
-			errCh <- err
-			return
+		dirStack := []string{}
+		for {
+			fmt.Fprint(wp, "\x00")
+
+			line, err := r.ReadBytes('\n')
+			if err != nil {
+				if len(dirStack) != 0 || err != io.EOF {
+					errCh <- err
+				}
+				close(errCh)
+				return
+			}
+
+			if line[0] == 'E' {
+				dirStack = dirStack[:len(dirStack)-1]
+				continue
+			}
+
+			var op byte
+			var mode uint32
+			var size int64
+			var name string
+			if n, err := fmt.Sscanf(string(line), "%c%o %d %s", &op, &mode, &size, &name); err != nil {
+				errCh <- fmt.Errorf("decoding scp directive: %s: %q", err, line)
+				return
+			} else if n != 4 {
+				errCh <- errors.New(string(line))
+				return
+			}
+
+			fullname := dest
+			if len(dirStack) > 0 {
+				fullname = filepath.Join(append(dirStack, name)...)
+			}
+
+			switch op {
+			case 'C':
+				f, err := os.Create(fullname)
+				if err != nil {
+					errCh <- err
+					return
+				}
+				defer f.Close()
+
+				if err := f.Chmod(os.FileMode(mode)); err != nil {
+					errCh <- err
+					return
+				}
+
+				fmt.Fprint(wp, "\x00")
+
+				p := &progressWriter{f, 0, size, progress}
+				if _, err := io.Copy(p, io.LimitReader(r, size)); err != nil {
+					errCh <- err
+					return
+				}
+
+				// File data has a trailing null byte.
+				_, err = r.ReadByte()
+				if err != nil {
+					errCh <- err
+					return
+				}
+			case 'D':
+				if err := os.Mkdir(fullname, os.FileMode(mode)); err != nil && !os.IsExist(err) {
+					errCh <- err
+					return
+				}
+				if len(dirStack) == 0 {
+					dirStack = append(dirStack, dest)
+				} else {
+					dirStack = append(dirStack, name)
+				}
+			default:
+				errCh <- fmt.Errorf("unknown operation '%c'", op)
+				return
+			}
 		}
-
-		var mode uint32
-		var size int64
-		var name string
-		if n, err := fmt.Sscanf(string(line), "C%o %d %s", &mode, &size, &name); err != nil {
-			errCh <- err
-			return
-		} else if n != 3 {
-			errCh <- errors.New(string(line))
-			return
-		}
-		_ = name
-
-		f, err := os.Create(dest)
-		if err != nil {
-			errCh <- err
-			return
-		}
-		defer f.Close()
-
-		if err := f.Chmod(os.FileMode(mode)); err != nil {
-			errCh <- err
-			return
-		}
-
-		fmt.Fprint(wp, "\x00")
-
-		p := &progressWriter{f, 0, size, progress}
-		if _, err := io.Copy(p, io.LimitReader(r, size)); err != nil {
-			errCh <- err
-			return
-		}
-
-		fmt.Fprint(wp, "\x00")
-		close(errCh)
 	}()
 
 	err := session.Run(fmt.Sprintf("scp -qrf %s", src))
