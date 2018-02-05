@@ -524,7 +524,8 @@ func (c *syncedCluster) get(src, dest string) {
 				defer session.Close()
 				dest := dest
 				if len(c.nodes) > 1 {
-					dest = fmt.Sprintf("%d.%s", c.nodes[i], dest)
+					base := fmt.Sprintf("%d.%s", c.nodes[i], filepath.Base(dest))
+					dest = filepath.Join(filepath.Dir(dest), base)
 				}
 				err = scpGet(src, dest, func(p float64) {
 					linesMu.Lock()
