@@ -425,9 +425,6 @@ var lockFile = os.ExpandEnv("$HOME/.roachprod/LOCK")
 
 func syncAll(cloud *Cloud) error {
 	fmt.Println("Syncing...")
-	if err := initHostDir(); err != nil {
-		return err
-	}
 
 	// Acquire a filesystem lock so that two concurrent `roachprod sync`
 	// operations don't clobber each other.
@@ -858,9 +855,14 @@ will perform %[1]s on:
 		os.Exit(1)
 	}
 
+	if err := initHostDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+
 	if err := loadClusters(); err != nil {
 		// We don't want to exit as we may be looking at the help message.
-		fmt.Printf("problem loading clusters: %s", err)
+		fmt.Printf("problem loading clusters: %s\n", err)
 	}
 
 	if err := rootCmd.Execute(); err != nil {
