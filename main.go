@@ -765,18 +765,19 @@ func main() {
 	rootCmd.Flags().BoolVar(
 		&insecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 
+	for _, cmd := range []*cobra.Command{createCmd, destroyCmd, extendCmd} {
+		cmd.Flags().StringVarP(&username, "username", "u", os.Getenv("ROACHPROD_USER"),
+			"Username to run under, detect if blank")
+	}
+
 	createCmd.Flags().DurationVarP(&createVMOpts.Lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", true, "Use local SSD")
 	createCmd.Flags().StringVar(&createVMOpts.MachineType, "machine-type", "n1-standard-4", "Machine type (see https://cloud.google.com/compute/docs/machine-types)")
 	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 4, "Number of nodes")
-	createCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 	createCmd.Flags().StringSliceVarP(&zones, "zones", "z", []string{"us-east1-b", "us-west1-b", "europe-west2-b"}, "Zones for cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.GeoDistributed, "geo", false, "Create geo-distributed cluster")
 
-	destroyCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
-
 	extendCmd.Flags().DurationVarP(&extendLifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
-	extendCmd.Flags().StringVarP(&username, "username", "u", "", "Username to run under, detect if blank")
 
 	listCmd.Flags().BoolVarP(&listDetails, "details", "d", false, "Show cluster details")
 
