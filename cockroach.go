@@ -5,13 +5,22 @@ import (
 	"strings"
 )
 
+var startOpts struct {
+	sequential bool
+}
+
 type cockroach struct{}
 
 func (r cockroach) start(c *syncedCluster) {
 	display := fmt.Sprintf("%s: starting", c.name)
 	host1 := c.host(1)
 	nodes := c.serverNodes()
-	c.parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
+
+	p := 0
+	if startOpts.sequential {
+		p = 1
+	}
+	c.parallel(display, len(nodes), p, func(i int) ([]byte, error) {
 		host := c.host(nodes[i])
 		user := c.user(nodes[i])
 		session, err := newSSHSession(user, host)
