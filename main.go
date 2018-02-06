@@ -222,7 +222,10 @@ func verifyClusterName(clusterName string) (string, error) {
 	}
 
 	account := username
-	if len(username) == 0 {
+	if len(account) == 0 {
+		account = os.Getenv("ROACHPROD_USER")
+	}
+	if len(account) == 0 {
 		var err error
 		account, err = findActiveAccount()
 		if err != nil {
