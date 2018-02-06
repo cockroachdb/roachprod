@@ -13,7 +13,9 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
 )
 
 var rootCmd = &cobra.Command{
@@ -419,21 +421,29 @@ var syncCmd = &cobra.Command{
 	},
 }
 
+var lockFile = os.ExpandEnv("$HOME/.roachprod/LOCK")
+
 func syncAll(cloud *Cloud) error {
 	fmt.Println("Syncing...")
-	if err := initHostDir(); err != nil {
-		return err
+
+	// Acquire a filesystem lock so that two concurrent `roachprod sync`
+	// operations don't clobber each other.
+	f, err := os.Create(lockFile)
+	if err != nil {
+		return errors.Wrapf(err, "creating lock file %q", lockFile)
 	}
+	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+		return errors.Wrap(err, "acquiring lock on %q")
+	}
+	defer f.Close()
+
 	if err := syncHosts(cloud); err != nil {
 		return err
 	}
 	if err := cleanSSH(); err != nil {
 		return err
 	}
-	if err := configSSH(); err != nil {
-		return err
-	}
-	return nil
+	return configSSH()
 }
 
 var gcCmd = &cobra.Command{
@@ -845,9 +855,14 @@ will perform %[1]s on:
 		os.Exit(1)
 	}
 
+	if err := initHostDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+
 	if err := loadClusters(); err != nil {
 		// We don't want to exit as we may be looking at the help message.
-		fmt.Printf("problem loading clusters: %s", err)
+		fmt.Printf("problem loading clusters: %s\n", err)
 	}
 
 	if err := rootCmd.Execute(); err != nil {
