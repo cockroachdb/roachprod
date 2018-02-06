@@ -17,6 +17,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 type clusterImpl interface {
@@ -286,14 +288,11 @@ func (c *syncedCluster) run(w io.Writer, nodes []int, title, cmd string) error {
 	return nil
 }
 
-// TODO(peter): add a timeout to wait so we don't spin here indefinitely if
-// there is a problem with one of the nodes. We only need to do this if we see
-// problems here when creating clusters.
 func (c *syncedCluster) wait() error {
 	display := fmt.Sprintf("%s: waiting for nodes to start", c.name)
-	errors := make([]error, len(c.nodes))
+	errs := make([]error, len(c.nodes))
 	c.parallel(display, len(c.nodes), 0, func(i int) ([]byte, error) {
-		for {
+		for j := 0; j < 600; j++ {
 			session, err := newSSHSession(c.user(c.nodes[i]), c.host(c.nodes[i]))
 			if err != nil {
 				time.Sleep(500 * time.Millisecond)
@@ -301,18 +300,31 @@ func (c *syncedCluster) wait() error {
 			}
 			defer session.Close()
 
-			if _, err := session.CombinedOutput("echo OK"); err != nil {
-				errors[i] = err
+			// Wait for the startup scripts to complete.
+			out, err := session.CombinedOutput("systemctl show google-startup-scripts -p ActiveState")
+			if err != nil {
+				errs[i] = err
+				return nil, nil
+			}
+			if strings.TrimSpace(string(out)) == "ActiveState=activating" {
+				time.Sleep(500 * time.Millisecond)
+				continue
 			}
 			return nil, nil
 		}
+		errs[i] = errors.New("timed out after 5m")
+		return nil, nil
 	})
 
-	for i, err := range errors {
+	var foundErr bool
+	for i, err := range errs {
 		if err != nil {
 			fmt.Printf("  %2d: %v\n", c.nodes[i], err)
-			return err
+			foundErr = true
 		}
+	}
+	if foundErr {
+		return errors.New("not all nodes booted successfully")
 	}
 	return nil
 }
