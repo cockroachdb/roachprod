@@ -167,18 +167,7 @@ Hint: use "roachprod sync" to update the list of available clusters.
 		return nil, fmt.Errorf("unknown cluster type: %s", clusterType)
 	}
 
-	total := len(c.vms)
-	if c.isLocal() {
-		// If ${HOME}/local exists default to the number of nodes in the cluster.
-		if entries, err := filepath.Glob(os.ExpandEnv("${HOME}/local/*")); err == nil {
-			total = len(entries)
-		}
-		if total == 0 {
-			total = 1
-		}
-	}
-
-	nodes, err := listNodes(nodeNames, total)
+	nodes, err := listNodes(nodeNames, len(c.vms))
 	if err != nil {
 		return nil, err
 	}
@@ -196,21 +185,6 @@ Hint: use "roachprod sync" to update the list of available clusters.
 	c.args = nodeArgs
 
 	if c.isLocal() {
-		var max int
-		for _, i := range c.nodes {
-			if max < i {
-				max = i
-			}
-		}
-
-		c.vms = make([]string, max)
-		c.users = make([]string, max)
-		c.localities = make([]string, max)
-		for i := range c.vms {
-			c.vms[i] = "localhost"
-			c.users[i] = osUser.Username
-		}
-
 		if err := findLocalBinary(); err != nil {
 			return nil, err
 		}
@@ -221,6 +195,9 @@ Hint: use "roachprod sync" to update the list of available clusters.
 func verifyClusterName(clusterName string) (string, error) {
 	if len(clusterName) == 0 {
 		return "", fmt.Errorf("cluster name cannot be blank")
+	}
+	if clusterName == local {
+		return clusterName, nil
 	}
 
 	account := username
@@ -256,9 +233,10 @@ func verifyClusterName(clusterName string) (string, error) {
 var createVMOpts VMOpts
 
 var createCmd = &cobra.Command{
-	Use:   "create <cluster id>",
-	Short: "create a cluster",
-	Long:  ``,
+	Use:          "create <cluster id>",
+	Short:        "create a cluster",
+	Long:         ``,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return fmt.Errorf("wrong number of arguments")
@@ -290,37 +268,39 @@ var createCmd = &cobra.Command{
 
 		fmt.Println("OK")
 
-		{
-			cloud, err = listCloud()
-			if err != nil {
-				return err
+		if clusterName != local {
+			{
+				cloud, err = listCloud()
+				if err != nil {
+					return err
+				}
+
+				c, ok := cloud.Clusters[clusterName]
+				if !ok {
+					return fmt.Errorf("could not find %s in list of cluster", clusterName)
+				}
+				c.PrintDetails()
+
+				if err := syncAll(cloud); err != nil {
+					return err
+				}
 			}
 
-			c, ok := cloud.Clusters[clusterName]
-			if !ok {
-				return fmt.Errorf("could not find %s in list of cluster", clusterName)
-			}
-			c.PrintDetails()
+			{
+				// Wait for the nodes in the cluster to start.
+				clusters = map[string]*syncedCluster{}
+				if err := loadClusters(); err != nil {
+					return err
+				}
 
-			if err := syncAll(cloud); err != nil {
-				return err
-			}
-		}
+				c, err := newCluster(clusterName, false)
+				if err != nil {
+					return err
+				}
 
-		{
-			// Wait for the nodes in the cluster to start.
-			clusters = map[string]*syncedCluster{}
-			if err := loadClusters(); err != nil {
-				return err
-			}
-
-			c, err := newCluster(clusterName, false)
-			if err != nil {
-				return err
-			}
-
-			if err := c.wait(); err != nil {
-				return err
+				if err := c.wait(); err != nil {
+					return err
+				}
 			}
 		}
 
@@ -384,7 +364,13 @@ var listCmd = &cobra.Command{
 			if listDetails {
 				c.PrintDetails()
 			} else {
-				fmt.Fprintf(tw, "%s:\t%d\t(%s)\n", c.Name, len(c.VMs), c.LifetimeRemaining().Round(time.Second))
+				fmt.Fprintf(tw, "%s:\t%d", c.Name, len(c.VMs))
+				if !c.isLocal() {
+					fmt.Fprintf(tw, "\t(%s)", c.LifetimeRemaining().Round(time.Second))
+				} else {
+					fmt.Fprintf(tw, "\t(-)")
+				}
+				fmt.Fprintf(tw, "\n")
 			}
 		}
 		if err := tw.Flush(); err != nil {

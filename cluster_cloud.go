@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"text/tabwriter"
 	"time"
 
 	"github.com/pkg/errors"
@@ -52,20 +56,33 @@ func (c *CloudCluster) LifetimeRemaining() time.Duration {
 }
 
 func (c *CloudCluster) String() string {
-	return fmt.Sprintf("%s: %d (%s)", c.Name, len(c.VMs), c.LifetimeRemaining().Round(time.Second))
+	var buf bytes.Buffer
+	fmt.Fprintf(&buf, "%s: %d", c.Name, len(c.VMs))
+	if !c.isLocal() {
+		fmt.Fprintf(&buf, " (%s)", c.LifetimeRemaining().Round(time.Second))
+	}
+	return buf.String()
 }
 
 func (c *CloudCluster) PrintDetails() {
 	fmt.Printf("%s: ", c.Name)
-	l := c.LifetimeRemaining().Round(time.Second)
-	if l <= 0 {
-		fmt.Printf("expired %s ago\n", -l)
+	if !c.isLocal() {
+		l := c.LifetimeRemaining().Round(time.Second)
+		if l <= 0 {
+			fmt.Printf("expired %s ago\n", -l)
+		} else {
+			fmt.Printf("%s remaining\n", l)
+		}
 	} else {
-		fmt.Printf("%s remaining\n", l)
+		fmt.Printf("(no expiration)\n")
 	}
 	for _, vm := range c.VMs {
-		fmt.Printf("  %s\t%s.%s.%s\t%s\t%s\n", vm.Name, vm.Name, vm.Zone, project, vm.PrivateIP, vm.PublicIP)
+		fmt.Printf("  %s\t%s\t%s\t%s\n", vm.Name, vm.dns(), vm.PrivateIP, vm.PublicIP)
 	}
+}
+
+func (c *CloudCluster) isLocal() bool {
+	return c.Name == local
 }
 
 type VM struct {
@@ -81,12 +98,21 @@ var regionRE = regexp.MustCompile(`(.*[^-])-?[a-z]$`)
 
 func (vm *VM) locality() string {
 	var region string
-	if match := regionRE.FindStringSubmatch(vm.Zone); len(match) == 2 {
+	if vm.Zone == local {
+		region = local
+	} else if match := regionRE.FindStringSubmatch(vm.Zone); len(match) == 2 {
 		region = match[1]
 	} else {
 		log.Fatalf("unable to parse region from zone %q", vm.Zone)
 	}
 	return fmt.Sprintf("region=%s,zone=%s", region, vm.Zone)
+}
+
+func (vm *VM) dns() string {
+	if vm.Zone == local {
+		return vm.Name
+	}
+	return fmt.Sprintf("%s.%s.%s", vm.Name, vm.Zone, project)
 }
 
 type VMList []VM
@@ -155,7 +181,7 @@ func listCloud() (*Cloud, error) {
 				User:      userName,
 				CreatedAt: createdAt,
 				Lifetime:  lifetime,
-				VMs:       make([]VM, 0),
+				VMs:       nil,
 			}
 		}
 
@@ -176,6 +202,46 @@ func listCloud() (*Cloud, error) {
 		}
 	}
 
+	{
+		// Load the local cluster (if it exists)
+		path := os.ExpandEnv(defaultHostDir) + "/" + local
+		contents, err := ioutil.ReadFile(path)
+		if err == nil {
+			c := cloud.Clusters[local]
+			if c == nil {
+				c = &CloudCluster{
+					Name:      local,
+					User:      osUser.Username,
+					CreatedAt: time.Now(),
+					Lifetime:  time.Hour,
+					VMs:       nil,
+				}
+				cloud.Clusters[local] = c
+			}
+
+			for _, l := range strings.Split(string(contents), "\n") {
+				fields := strings.Fields(l)
+				if len(fields) == 0 {
+					continue
+				} else if len(fields[0]) > 0 && fields[0][0] == '#' {
+					// Comment line.
+					continue
+				} else if len(fields) > 2 {
+					return nil, newInvalidHostsLineErr(l)
+				}
+
+				c.VMs = append(c.VMs, VM{
+					Name:      "localhost",
+					CreatedAt: c.CreatedAt,
+					Lifetime:  time.Hour,
+					PrivateIP: "127.0.0.1",
+					PublicIP:  "127.0.0.1",
+					Zone:      local,
+				})
+			}
+		}
+	}
+
 	// Sort VMs for each cluster. We want to make sure we always have the same order.
 	for _, c := range cloud.Clusters {
 		sort.Sort(c.VMs)
@@ -183,7 +249,34 @@ func listCloud() (*Cloud, error) {
 	return cloud, nil
 }
 
+func createLocalCluster(name string, nodes int) error {
+	path := os.ExpandEnv(defaultHostDir) + "/" + name
+	file, err := os.Create(path)
+	if err != nil {
+		return errors.Wrapf(err, "problem creating file %s", path)
+	}
+	defer file.Close()
+
+	// Align columns left and separate with at least two spaces.
+	tw := tabwriter.NewWriter(file, 0, 8, 2, ' ', 0)
+	tw.Write([]byte("# user@host\tlocality\n"))
+	for i := 0; i < nodes; i++ {
+		// N.B. gcloud uses the local username to log into instances rather
+		// than the username on the authenticated Google account.
+		tw.Write([]byte(fmt.Sprintf(
+			"%s@%s\t%s\n", osUser.Username, "127.0.0.1", "region=local,zone=local")))
+	}
+	if err := tw.Flush(); err != nil {
+		return errors.Wrapf(err, "problem writing file %s", path)
+	}
+	return nil
+}
+
 func createCluster(name string, nodes int, opts VMOpts) error {
+	if name == local {
+		return createLocalCluster(name, nodes)
+	}
+
 	vmNames := make([]string, nodes, nodes)
 	for i := 0; i < nodes; i++ {
 		// Start instance indexing at 1.
@@ -194,6 +287,15 @@ func createCluster(name string, nodes int, opts VMOpts) error {
 }
 
 func destroyCluster(c *CloudCluster) error {
+	if c.isLocal() {
+		t, err := newCluster(c.Name, false /* reserveLoadGen */)
+		if err != nil {
+			return err
+		}
+		t.wipe()
+		return os.Remove(os.ExpandEnv(defaultHostDir) + "/" + c.Name)
+	}
+
 	n := len(c.VMs)
 	vmNames := make([]string, n, n)
 	vmZones := make([]string, n, n)
@@ -206,6 +308,10 @@ func destroyCluster(c *CloudCluster) error {
 }
 
 func extendCluster(c *CloudCluster, extension time.Duration) error {
+	if c.isLocal() {
+		return errors.New("local clusters have unlimited lifetime")
+	}
+
 	newLifetime := c.Lifetime + extension
 	extendErrors := make([]error, len(c.VMs))
 	var wg sync.WaitGroup

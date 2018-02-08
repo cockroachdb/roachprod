@@ -34,6 +34,7 @@ func syncHosts(cloud *Cloud) error {
 		if err != nil {
 			return errors.Wrapf(err, "problem creating file %s", filename)
 		}
+		defer file.Close()
 
 		// Align columns left and separate with at least two spaces.
 		tw := tabwriter.NewWriter(file, 0, 8, 2, ' ', 0)
@@ -137,8 +138,5 @@ func loadClusters() error {
 		clusters[file.Name()] = c
 	}
 
-	clusters[local] = &syncedCluster{
-		name: local,
-	}
 	return nil
 }
