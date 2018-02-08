@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"os/user"
 	"path"
 	"path/filepath"
@@ -848,19 +847,6 @@ will perform %[1]s on:
     marc-test-9
 `, cmd.Name())
 	}
-
-	// Forward SIGTERM to any child processes that get created.
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, unix.SIGTERM)
-	if err := unix.Setpgid(0, 0); err != nil {
-		fmt.Fprintf(os.Stderr, "%v", err)
-		os.Exit(1)
-	}
-	go func() {
-		<-sigCh
-		signal.Reset(unix.SIGTERM)
-		unix.Kill(-os.Getpid(), unix.SIGTERM)
-	}()
 
 	var err error
 	osUser, err = user.Current()

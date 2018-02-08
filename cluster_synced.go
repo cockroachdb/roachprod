@@ -640,6 +640,7 @@ func (c *syncedCluster) ssh(args []string) error {
 	}
 
 	allArgs := []string{
+		"ssh",
 		fmt.Sprintf("%s@%s", c.user(c.nodes[0]), c.host(c.nodes[0])),
 		"-i", filepath.Join(osUser.HomeDir, ".ssh", "google_compute_engine"),
 		"-o", "StrictHostKeyChecking=no",
@@ -682,11 +683,11 @@ func (c *syncedCluster) ssh(args []string) error {
 		allArgs = append(allArgs, strings.Split(arg, " ")...)
 	}
 
-	cmd := exec.Command(`ssh`, allArgs...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	sshPath, err := exec.LookPath(allArgs[0])
+	if err != nil {
+		return err
+	}
+	return syscall.Exec(sshPath, allArgs, os.Environ())
 }
 
 func (c *syncedCluster) stopLoad() {
