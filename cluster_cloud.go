@@ -268,12 +268,8 @@ func createCluster(name string, nodes int, opts VMOpts) error {
 
 func destroyCluster(c *CloudCluster) error {
 	if c.isLocal() {
-		t, err := newCluster(c.Name, false /* reserveLoadGen */)
-		if err != nil {
-			return err
-		}
-		t.wipe()
-		return os.Remove(filepath.Join(os.ExpandEnv(defaultHostDir), c.Name))
+		// Local cluster destruction is handled in destroyCmd.
+		return errors.New("local clusters cannot be destroyed")
 	}
 
 	n := len(c.VMs)
