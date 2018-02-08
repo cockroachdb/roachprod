@@ -865,7 +865,7 @@ will perform %[1]s on:
 	var err error
 	osUser, err = user.Current()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "unable to lookup current user: %s", err)
+		fmt.Fprintf(os.Stderr, "unable to lookup current user: %s\n", err)
 		os.Exit(1)
 	}
 
