@@ -853,7 +853,8 @@ will perform %[1]s on:
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, unix.SIGTERM)
 	if err := unix.Setpgid(0, 0); err != nil {
-		errors.Wrap(err, "unix.Setpgid")
+		fmt.Fprintf(os.Stderr, "%v", err)
+		os.Exit(1)
 	}
 	go func() {
 		<-sigCh
