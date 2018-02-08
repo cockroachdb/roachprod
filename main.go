@@ -630,19 +630,6 @@ tag 6151ae1.`,
 	},
 }
 
-// TODO(dan): This is quite similar to testCmd. I'm leaving it separate while
-// iterating, but once that dies down, see if it makes sense to fold this into
-// testCmd.
-var workloadTestCmd = &cobra.Command{
-	Use:   "workload-test <cluster> <name> <workload-invocation>",
-	Short: "run one or more tests on a cluster",
-	Args:  cobra.MinimumNArgs(3),
-	Run: func(cmd *cobra.Command, args []string) {
-		clusterName, testName, workloadCmd := args[0], args[1], args[2:]
-		workloadTest(clusterName, `` /* dir */, testName, strings.Join(workloadCmd, ` `))
-	},
-}
-
 var installCmd = &cobra.Command{
 	Use:   "install <cluster> <software>",
 	Short: "install 3rd party software",
@@ -771,7 +758,7 @@ func main() {
 	cobra.EnableCommandSorting = false
 
 	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
-		statusCmd, monitorCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd, workloadTestCmd,
+		statusCmd, monitorCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd,
 		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
 		&insecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
