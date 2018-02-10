@@ -131,7 +131,7 @@ func (c *syncedCluster) wipe() {
 			cockroach{}.nodePort(c, c.nodes[i]),
 			cassandra{}.nodePort(c, c.nodes[i]))
 		if c.isLocal() {
-			cmd += `rm -fr ${HOME}/local ;`
+			cmd += fmt.Sprintf(`rm -fr ${HOME}/local/cockroach%d ;`, c.nodes[i])
 		} else {
 			cmd += `find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; ;
 rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo-data} \; ;
