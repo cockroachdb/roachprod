@@ -253,13 +253,18 @@ var createCmd = &cobra.Command{
 		}
 		fmt.Printf("Creating cluster %s with %d nodes\n", clusterName, numNodes)
 
-		cloud, err := listCloud()
-		if err != nil {
-			return err
-		}
-
-		if _, ok := cloud.Clusters[clusterName]; ok {
-			return fmt.Errorf("cluster %s already exists", clusterName)
+		if clusterName != local {
+			cloud, err := listCloud()
+			if err != nil {
+				return err
+			}
+			if _, ok := cloud.Clusters[clusterName]; ok {
+				return fmt.Errorf("cluster %s already exists", clusterName)
+			}
+		} else {
+			if _, ok := clusters[clusterName]; ok {
+				return fmt.Errorf("cluster %s already exists", clusterName)
+			}
 		}
 
 		if err := createCluster(clusterName, numNodes, createVMOpts); err != nil {
@@ -270,7 +275,7 @@ var createCmd = &cobra.Command{
 
 		if clusterName != local {
 			{
-				cloud, err = listCloud()
+				cloud, err := listCloud()
 				if err != nil {
 					return err
 				}
@@ -322,19 +327,33 @@ var destroyCmd = &cobra.Command{
 			return err
 		}
 
-		cloud, err := listCloud()
-		if err != nil {
-			return err
-		}
+		if clusterName != local {
+			cloud, err := listCloud()
+			if err != nil {
+				return err
+			}
 
-		c, ok := cloud.Clusters[clusterName]
-		if !ok {
-			return fmt.Errorf("cluster %s does not exist", clusterName)
-		}
+			c, ok := cloud.Clusters[clusterName]
+			if !ok {
+				return fmt.Errorf("cluster %s does not exist", clusterName)
+			}
 
-		fmt.Printf("Destroying cluster %s with %d nodes\n", clusterName, len(c.VMs))
-		if err := destroyCluster(c); err != nil {
-			return err
+			fmt.Printf("Destroying cluster %s with %d nodes\n", clusterName, len(c.VMs))
+			if err := destroyCluster(c); err != nil {
+				return err
+			}
+		} else {
+			if _, ok := clusters[clusterName]; !ok {
+				return fmt.Errorf("cluster %s does not exist", clusterName)
+			}
+			c, err := newCluster(clusterName, false /* reserveLoadGen */)
+			if err != nil {
+				return err
+			}
+			c.wipe()
+			if err := os.Remove(filepath.Join(os.ExpandEnv(defaultHostDir), c.name)); err != nil {
+				return err
+			}
 		}
 
 		fmt.Println("OK")
