@@ -428,6 +428,8 @@ var syncCmd = &cobra.Command{
 
 var lockFile = os.ExpandEnv("$HOME/.roachprod/LOCK")
 
+var bashCompletion = os.ExpandEnv("$HOME/.roachprod/bash-completion.sh")
+
 func syncAll(cloud *Cloud) error {
 	fmt.Println("Syncing...")
 
@@ -447,6 +449,19 @@ func syncAll(cloud *Cloud) error {
 	}
 	if err := cleanSSH(); err != nil {
 		return err
+	}
+
+	{
+		names := make([]string, 0, len(cloud.Clusters))
+		for name := range cloud.Clusters {
+			names = append(names, name)
+		}
+		for _, cmd := range []*cobra.Command{
+			destroyCmd, statusCmd, monitorCmd, startCmd, stopCmd, wipeCmd, sshCmd,
+		} {
+			cmd.ValidArgs = names
+		}
+		rootCmd.GenBashCompletionFile(bashCompletion)
 	}
 	return configSSH()
 }
