@@ -10,22 +10,23 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/cockroachdb/roachprod/cloud"
+	"github.com/cockroachdb/roachprod/config"
+	"github.com/cockroachdb/roachprod/install"
 	"github.com/pkg/errors"
 )
 
 const (
-	defaultHostDir   = "${HOME}/.roachprod/hosts"
-	local            = "local"
 	sshKeyPathPrefix = "${HOME}/.ssh/roachprod"
 )
 
 func initHostDir() error {
-	hd := os.ExpandEnv(defaultHostDir)
+	hd := os.ExpandEnv(config.DefaultHostDir)
 	return os.MkdirAll(hd, 0755)
 }
 
-func syncHosts(cloud *Cloud) error {
-	hd := os.ExpandEnv(defaultHostDir)
+func syncHosts(cloud *cloud.Cloud) error {
+	hd := os.ExpandEnv(config.DefaultHostDir)
 
 	// Write all host files.
 	for _, c := range cloud.Clusters {
@@ -43,7 +44,7 @@ func syncHosts(cloud *Cloud) error {
 			// N.B. gcloud uses the local username to log into instances rather
 			// than the username on the authenticated Google account.
 			tw.Write([]byte(fmt.Sprintf(
-				"%s@%s\t%s\n", osUser.Username, vm.PublicIP, vm.locality())))
+				"%s@%s\t%s\n", config.OsUser.Username, vm.PublicIP, vm.Locality())))
 		}
 		if err := tw.Flush(); err != nil {
 			return errors.Wrapf(err, "problem writing file %s", filename)
@@ -53,8 +54,8 @@ func syncHosts(cloud *Cloud) error {
 	return gcHostsFiles(cloud)
 }
 
-func gcHostsFiles(cloud *Cloud) error {
-	hd := os.ExpandEnv(defaultHostDir)
+func gcHostsFiles(cloud *cloud.Cloud) error {
+	hd := os.ExpandEnv(config.DefaultHostDir)
 	files, err := ioutil.ReadDir(hd)
 	if err != nil {
 		return err
@@ -81,7 +82,7 @@ func newInvalidHostsLineErr(line string) error {
 }
 
 func loadClusters() error {
-	hd := os.ExpandEnv(defaultHostDir)
+	hd := os.ExpandEnv(config.DefaultHostDir)
 	files, err := ioutil.ReadDir(hd)
 	if err != nil {
 		return err
@@ -99,8 +100,8 @@ func loadClusters() error {
 		}
 		lines := strings.Split(string(contents), "\n")
 
-		c := &syncedCluster{
-			name: file.Name(),
+		c := &install.SyncedCluster{
+			Name: file.Name(),
 		}
 
 		for _, l := range lines {
@@ -117,7 +118,7 @@ func loadClusters() error {
 			parts := strings.Split(fields[0], "@")
 			var n, u string
 			if len(parts) == 1 {
-				u = osUser.Username
+				u = config.OsUser.Username
 				n = parts[0]
 			} else if len(parts) == 2 {
 				u = parts[0]
@@ -131,11 +132,11 @@ func loadClusters() error {
 				l = fields[1]
 			}
 
-			c.vms = append(c.vms, n)
-			c.users = append(c.users, u)
-			c.localities = append(c.localities, l)
+			c.VMs = append(c.VMs, n)
+			c.Users = append(c.Users, u)
+			c.Localities = append(c.Localities, l)
 		}
-		clusters[file.Name()] = c
+		install.Clusters[file.Name()] = c
 	}
 
 	return nil

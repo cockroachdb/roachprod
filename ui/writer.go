@@ -1,4 +1,4 @@
-package main
+package ui
 
 import (
 	"bytes"
@@ -10,14 +10,14 @@ import (
 	"golang.org/x/crypto/ssh/terminal"
 )
 
-var isStdoutTerminal = terminal.IsTerminal(int(os.Stdout.Fd()))
+var IsStdoutTerminal = terminal.IsTerminal(int(os.Stdout.Fd()))
 
-type uiWriter struct {
+type Writer struct {
 	buf       bytes.Buffer
 	lineCount int
 }
 
-func (w *uiWriter) Flush(out io.Writer) error {
+func (w *Writer) Flush(out io.Writer) error {
 	if len(w.buf.Bytes()) == 0 {
 		return nil
 	}
@@ -33,11 +33,11 @@ func (w *uiWriter) Flush(out io.Writer) error {
 	return err
 }
 
-func (w *uiWriter) Write(b []byte) (n int, err error) {
+func (w *Writer) Write(b []byte) (n int, err error) {
 	return w.buf.Write(b)
 }
 
-func (w *uiWriter) clearLines(out io.Writer) {
+func (w *Writer) clearLines(out io.Writer) {
 	fmt.Fprint(out, strings.Repeat("\033[1A\033[2K\r", w.lineCount))
 	w.lineCount = 0
 }

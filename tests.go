@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"github.com/cockroachdb/roachprod/install"
+	"github.com/cockroachdb/roachprod/ssh"
 	"io"
 	"io/ioutil"
 	"log"
@@ -213,21 +215,21 @@ func allTests() []string {
 	return r
 }
 
-func testCluster(name string) *syncedCluster {
+func testCluster(name string) *install.SyncedCluster {
 	c, err := newCluster(name, true /* reserveLoadGen */)
 	if err != nil {
 		log.Fatal(err)
 	}
-	if c.loadGen == 0 {
-		log.Fatalf("%s: no load generator node specified", c.name)
+	if c.LoadGen == 0 {
+		log.Fatalf("%s: no load generator node specified", c.Name)
 	}
 	return c
 }
 
-func clusterVersion(c *syncedCluster) string {
+func clusterVersion(c *install.SyncedCluster) string {
 	switch clusterType {
 	case "cockroach":
-		versions := c.cockroachVersions()
+		versions := c.CockroachVersions()
 		if len(versions) == 0 {
 			// TODO(peter): If we're running on existing test, rather than dying let
 			// the test upload the correct cockroach binary.
@@ -302,25 +304,25 @@ func parseConcurrency(s string, numNodes int) (lo int, hi int, step int) {
 	return 0, 0, 0
 }
 
-func getBin(c *syncedCluster, dir string) {
+func getBin(c *install.SyncedCluster, dir string) {
 	if clusterType == "cockroach" {
 		bin := filepath.Join(dir, "cockroach")
 		if _, err := os.Stat(bin); err == nil {
 			return
 		}
 		t := *c
-		t.nodes = t.nodes[:1]
-		t.get("./cockroach", bin)
+		t.Nodes = t.Nodes[:1]
+		t.Get("./cockroach", bin)
 	}
 }
 
-func putBin(c *syncedCluster, dir string) error {
+func putBin(c *install.SyncedCluster, dir string) error {
 	if clusterType == "cockroach" {
 		bin := filepath.Join(dir, "cockroach")
 		if _, err := os.Stat(bin); err != nil {
 			return err
 		}
-		c.put(bin, "./cockroach")
+		c.Put(bin, "./cockroach")
 	}
 	return nil
 }
@@ -339,10 +341,10 @@ func kvTest(clusterName, testName, dir, cmd string) {
 	c := testCluster(clusterName)
 	m := testMetadata{
 		Bin:     clusterVersion(c),
-		Cluster: c.name,
-		Nodes:   c.nodes,
-		Env:     c.env,
-		Args:    c.args,
+		Cluster: c.Name,
+		Nodes:   c.Nodes,
+		Env:     c.Env,
+		Args:    c.Args,
 		Test:    fmt.Sprintf("%s --duration=%s --concurrency=%%d", cmd, duration),
 		Date:    time.Now().Format("2006-01-02T15_04_05"),
 	}
@@ -358,10 +360,10 @@ func kvTest(clusterName, testName, dir, cmd string) {
 		m.Nodes = existing.Nodes
 		m.Env = existing.Env
 	}
-	fmt.Printf("%s: %s\n", c.name, dir)
+	fmt.Printf("%s: %s\n", c.Name, dir)
 	getBin(c, dir)
 
-	lo, hi, step := parseConcurrency(concurrency, len(c.serverNodes()))
+	lo, hi, step := parseConcurrency(concurrency, len(c.ServerNodes()))
 	for concurrency := lo; concurrency <= hi; concurrency += step {
 		runName := fmt.Sprint(concurrency)
 		if run, err := loadTestRun(dir, runName); err == nil && run != nil {
@@ -374,21 +376,21 @@ func kvTest(clusterName, testName, dir, cmd string) {
 				log.Fatal(err)
 			}
 			defer f.Close()
-			c.wipe()
-			c.start()
+			c.Wipe()
+			c.Start()
 			cmd := fmt.Sprintf(m.Test, concurrency)
 			stdout := io.MultiWriter(f, os.Stdout)
 			stderr := io.MultiWriter(f, os.Stderr)
-			return c.runLoad(cmd, stdout, stderr)
+			return c.RunLoad(cmd, stdout, stderr)
 		}()
 		if err != nil {
-			if !isSigKill(err) {
+			if !ssh.IsSigKill(err) {
 				fmt.Printf("%s\n", err)
 			}
 			break
 		}
 	}
-	c.stop()
+	c.Stop()
 }
 
 func kv0(clusterName, dir string) {
@@ -437,10 +439,10 @@ func nightly(clusterName, dir string) {
 	c := testCluster(clusterName)
 	m := testMetadata{
 		Bin:     clusterVersion(c),
-		Cluster: c.name,
-		Nodes:   c.nodes,
-		Env:     c.env,
-		Args:    c.args,
+		Cluster: c.Name,
+		Nodes:   c.Nodes,
+		Env:     c.Env,
+		Args:    c.Args,
 		Test:    "nightly",
 		Date:    time.Now().Format("2006-01-02T15_04_05"),
 	}
@@ -456,7 +458,7 @@ func nightly(clusterName, dir string) {
 		m.Nodes = existing.Nodes
 		m.Env = existing.Env
 	}
-	fmt.Printf("%s: %s\n", c.name, dir)
+	fmt.Printf("%s: %s\n", c.Name, dir)
 	getBin(c, dir)
 
 	for _, cmd := range cmds {
@@ -471,20 +473,20 @@ func nightly(clusterName, dir string) {
 				log.Fatal(err)
 			}
 			defer f.Close()
-			c.wipe()
-			c.start()
+			c.Wipe()
+			c.Start()
 			stdout := io.MultiWriter(f, os.Stdout)
 			stderr := io.MultiWriter(f, os.Stderr)
-			return c.runLoad(cmd.cmd, stdout, stderr)
+			return c.RunLoad(cmd.cmd, stdout, stderr)
 		}()
 		if err != nil {
-			if !isSigKill(err) {
+			if !ssh.IsSigKill(err) {
 				fmt.Printf("%s\n", err)
 			}
 			break
 		}
 	}
-	c.stop()
+	c.Stop()
 }
 
 func splits(clusterName, dir string) {
@@ -502,10 +504,10 @@ func splits(clusterName, dir string) {
 	c := testCluster(clusterName)
 	m := testMetadata{
 		Bin:     clusterVersion(c),
-		Cluster: c.name,
-		Nodes:   c.nodes,
-		Env:     c.env,
-		Args:    c.args,
+		Cluster: c.Name,
+		Nodes:   c.Nodes,
+		Env:     c.Env,
+		Args:    c.Args,
 		Test:    "splits",
 		Date:    time.Now().Format("2006-01-02T15_04_05"),
 	}
@@ -521,7 +523,7 @@ func splits(clusterName, dir string) {
 		m.Nodes = existing.Nodes
 		m.Env = existing.Env
 	}
-	fmt.Printf("%s: %s\n", c.name, dir)
+	fmt.Printf("%s: %s\n", c.Name, dir)
 	getBin(c, dir)
 
 	for i := 1; i <= 100; i++ {
@@ -536,22 +538,22 @@ func splits(clusterName, dir string) {
 				log.Fatal(err)
 			}
 			defer f.Close()
-			c.wipe()
-			c.start()
+			c.Wipe()
+			c.Start()
 			stdout := io.MultiWriter(f, os.Stdout)
 			stderr := io.MultiWriter(f, os.Stderr)
-			if err := c.runLoad(cmd, stdout, stderr); err != nil {
+			if err := c.RunLoad(cmd, stdout, stderr); err != nil {
 				return err
 			}
-			c.stop()
+			c.Stop()
 			return nil
 		}()
 		if err != nil {
-			if !isSigKill(err) {
+			if !ssh.IsSigKill(err) {
 				fmt.Printf("%s\n", err)
 			}
 			break
 		}
 	}
-	c.stop()
+	c.Stop()
 }

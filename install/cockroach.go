@@ -1,45 +1,47 @@
-package main
+package install
 
 import (
 	"fmt"
+	"github.com/cockroachdb/roachprod/config"
+	"github.com/cockroachdb/roachprod/ssh"
 	"strings"
 )
 
-var startOpts struct {
-	sequential bool
+var StartOpts struct {
+	Sequential bool
 }
 
-type cockroach struct{}
+type Cockroach struct{}
 
-func (r cockroach) start(c *syncedCluster) {
-	display := fmt.Sprintf("%s: starting", c.name)
+func (r Cockroach) Start(c *SyncedCluster) {
+	display := fmt.Sprintf("%s: starting", c.Name)
 	host1 := c.host(1)
-	nodes := c.serverNodes()
+	nodes := c.ServerNodes()
 
 	p := 0
-	if startOpts.sequential {
+	if StartOpts.Sequential {
 		p = 1
 	}
-	c.parallel(display, len(nodes), p, func(i int) ([]byte, error) {
+	c.Parallel(display, len(nodes), p, func(i int) ([]byte, error) {
 		host := c.host(nodes[i])
 		user := c.user(nodes[i])
-		session, err := newSSHSession(user, host)
+		session, err := ssh.NewSSHSession(user, host)
 		if err != nil {
 			return nil, err
 		}
 		defer session.Close()
 
-		port := r.nodePort(c, nodes[i])
+		port := r.NodePort(c, nodes[i])
 
 		var args []string
-		if c.secure {
+		if c.Secure {
 			args = append(args, "--certs-dir=certs")
 		} else {
 			args = append(args, "--insecure")
 		}
 		dir := "/mnt/data1/cockroach"
 		logDir := "${HOME}/logs"
-		if c.isLocal() {
+		if c.IsLocal() {
 			dir = fmt.Sprintf("${HOME}/local/cockroach%d", nodes[i])
 			logDir = fmt.Sprintf("${HOME}/local/cockroach%d/logs", nodes[i])
 		}
@@ -47,7 +49,7 @@ func (r cockroach) start(c *syncedCluster) {
 		args = append(args, "--log-dir="+logDir)
 		args = append(args, "--background")
 		cache := 25
-		if c.isLocal() {
+		if c.IsLocal() {
 			cache /= len(nodes)
 			if cache == 0 {
 				cache = 1
@@ -61,11 +63,11 @@ func (r cockroach) start(c *syncedCluster) {
 			args = append(args, "--locality="+locality)
 		}
 		if nodes[i] != 1 {
-			args = append(args, fmt.Sprintf("--join=%s:%d", host1, r.nodePort(c, 1)))
+			args = append(args, fmt.Sprintf("--join=%s:%d", host1, r.NodePort(c, 1)))
 		}
-		args = append(args, c.args...)
+		args = append(args, c.Args...)
 		cmd := "mkdir -p " + logDir + "; " +
-			c.env + " " + binary + " start " + strings.Join(args, " ") +
+			c.Env + " " + config.Binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr"
 		return session.CombinedOutput(cmd)
 	})
@@ -82,15 +84,15 @@ func (r cockroach) start(c *syncedCluster) {
 
 	if bootstrapped {
 		var msg string
-		display = fmt.Sprintf("%s: initializing cluster settings", c.name)
-		c.parallel(display, 1, 0, func(i int) ([]byte, error) {
-			session, err := newSSHSession(c.user(1), c.host(1))
+		display = fmt.Sprintf("%s: initializing cluster settings", c.Name)
+		c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
+			session, err := ssh.NewSSHSession(c.user(1), c.host(1))
 			if err != nil {
 				return nil, err
 			}
 			defer session.Close()
 
-			cmd := binary + ` sql --url ` + r.nodeURL(c, "localhost", r.nodePort(c, 1)) + ` -e "
+			cmd := config.Binary + ` sql --url ` + r.NodeURL(c, "localhost", r.NodePort(c, 1)) + ` -e "
 set cluster setting kv.allocator.stat_based_rebalancing.enabled = false;
 set cluster setting server.remote_debugging.mode = 'any';
 "`
@@ -107,9 +109,9 @@ set cluster setting server.remote_debugging.mode = 'any';
 	}
 }
 
-func (cockroach) nodeURL(c *syncedCluster, host string, port int) string {
+func (Cockroach) NodeURL(c *SyncedCluster, host string, port int) string {
 	url := fmt.Sprintf("'postgres://root@%s:%d", host, port)
-	if c.secure {
+	if c.Secure {
 		url += "?sslcert=certs%2Fnode.crt&sslkey=certs%2Fnode.key&" +
 			"sslrootcert=certs%2Fca.crt&sslmode=verify-full"
 	} else {
@@ -119,10 +121,10 @@ func (cockroach) nodeURL(c *syncedCluster, host string, port int) string {
 	return url
 }
 
-func (cockroach) nodePort(c *syncedCluster, index int) int {
+func (Cockroach) NodePort(c *SyncedCluster, index int) int {
 	const basePort = 26257
 	port := basePort
-	if c.isLocal() {
+	if c.IsLocal() {
 		port += (index - 1) * 2
 	}
 	return port

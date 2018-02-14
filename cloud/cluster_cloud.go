@@ -1,4 +1,4 @@
-package main
+package cloud
 
 import (
 	"bytes"
@@ -7,12 +7,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"text/tabwriter"
 	"time"
 
+	"github.com/cockroachdb/roachprod/config"
 	"github.com/pkg/errors"
 )
 
@@ -58,7 +58,7 @@ func (c *CloudCluster) LifetimeRemaining() time.Duration {
 func (c *CloudCluster) String() string {
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "%s: %d", c.Name, len(c.VMs))
-	if !c.isLocal() {
+	if !c.IsLocal() {
 		fmt.Fprintf(&buf, " (%s)", c.LifetimeRemaining().Round(time.Second))
 	}
 	return buf.String()
@@ -66,7 +66,7 @@ func (c *CloudCluster) String() string {
 
 func (c *CloudCluster) PrintDetails() {
 	fmt.Printf("%s: ", c.Name)
-	if !c.isLocal() {
+	if !c.IsLocal() {
 		l := c.LifetimeRemaining().Round(time.Second)
 		if l <= 0 {
 			fmt.Printf("expired %s ago\n", -l)
@@ -81,8 +81,8 @@ func (c *CloudCluster) PrintDetails() {
 	}
 }
 
-func (c *CloudCluster) isLocal() bool {
-	return c.Name == local
+func (c *CloudCluster) IsLocal() bool {
+	return c.Name == config.Local
 }
 
 type VM struct {
@@ -96,10 +96,10 @@ type VM struct {
 
 var regionRE = regexp.MustCompile(`(.*[^-])-?[a-z]$`)
 
-func (vm *VM) locality() string {
+func (vm *VM) Locality() string {
 	var region string
-	if vm.Zone == local {
-		region = local
+	if vm.Zone == config.Local {
+		region = config.Local
 	} else if match := regionRE.FindStringSubmatch(vm.Zone); len(match) == 2 {
 		region = match[1]
 	} else {
@@ -109,7 +109,7 @@ func (vm *VM) locality() string {
 }
 
 func (vm *VM) dns() string {
-	if vm.Zone == local {
+	if vm.Zone == config.Local {
 		return vm.Name
 	}
 	return fmt.Sprintf("%s.%s.%s", vm.Name, vm.Zone, project)
@@ -129,7 +129,9 @@ func namesFromVMName(name string) (string, string, error) {
 	return parts[0], strings.Join(parts[:len(parts)-1], "-"), nil
 }
 
-func listCloud() (*Cloud, error) {
+// Note that this **does not** initialize the local CloudCluster object unlike the
+// original version.  That local-initialization behavior currently resides in main.go.
+func ListCloud() (*Cloud, error) {
 	vms, err := listVMs()
 	if err != nil {
 		return nil, err
@@ -202,37 +204,11 @@ func listCloud() (*Cloud, error) {
 		}
 	}
 
-	// Initialize the local cluster (if it exists)
-	if sc, ok := clusters[local]; ok {
-		c := &CloudCluster{
-			Name:      local,
-			User:      osUser.Username,
-			CreatedAt: time.Now(),
-			Lifetime:  time.Hour,
-		}
-		cloud.Clusters[local] = c
-
-		for range sc.vms {
-			c.VMs = append(c.VMs, VM{
-				Name:      "localhost",
-				CreatedAt: c.CreatedAt,
-				Lifetime:  time.Hour,
-				PrivateIP: "127.0.0.1",
-				PublicIP:  "127.0.0.1",
-				Zone:      local,
-			})
-		}
-	}
-
-	// Sort VMs for each cluster. We want to make sure we always have the same order.
-	for _, c := range cloud.Clusters {
-		sort.Sort(c.VMs)
-	}
 	return cloud, nil
 }
 
 func createLocalCluster(name string, nodes int) error {
-	path := filepath.Join(os.ExpandEnv(defaultHostDir), name)
+	path := filepath.Join(os.ExpandEnv(config.DefaultHostDir), name)
 	file, err := os.Create(path)
 	if err != nil {
 		return errors.Wrapf(err, "problem creating file %s", path)
@@ -244,7 +220,7 @@ func createLocalCluster(name string, nodes int) error {
 	tw.Write([]byte("# user@host\tlocality\n"))
 	for i := 0; i < nodes; i++ {
 		tw.Write([]byte(fmt.Sprintf(
-			"%s@%s\t%s\n", osUser.Username, "127.0.0.1", "region=local,zone=local")))
+			"%s@%s\t%s\n", config.OsUser.Username, "127.0.0.1", "region=local,zone=local")))
 	}
 	if err := tw.Flush(); err != nil {
 		return errors.Wrapf(err, "problem writing file %s", path)
@@ -252,8 +228,8 @@ func createLocalCluster(name string, nodes int) error {
 	return nil
 }
 
-func createCluster(name string, nodes int, opts VMOpts) error {
-	if name == local {
+func CreateCluster(name string, nodes int, opts VMOpts) error {
+	if name == config.Local {
 		return createLocalCluster(name, nodes)
 	}
 
@@ -266,8 +242,8 @@ func createCluster(name string, nodes int, opts VMOpts) error {
 	return createVMs(vmNames, opts)
 }
 
-func destroyCluster(c *CloudCluster) error {
-	if c.isLocal() {
+func DestroyCluster(c *CloudCluster) error {
+	if c.IsLocal() {
 		// Local cluster destruction is handled in destroyCmd.
 		return errors.New("local clusters cannot be destroyed")
 	}
@@ -283,8 +259,8 @@ func destroyCluster(c *CloudCluster) error {
 	return deleteVMs(vmNames, vmZones)
 }
 
-func extendCluster(c *CloudCluster, extension time.Duration) error {
-	if c.isLocal() {
+func ExtendCluster(c *CloudCluster, extension time.Duration) error {
+	if c.IsLocal() {
 		return errors.New("local clusters have unlimited lifetime")
 	}
 

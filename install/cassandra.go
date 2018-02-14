@@ -1,8 +1,9 @@
-package main
+package install
 
 import (
 	"bufio"
 	"fmt"
+	"github.com/cockroachdb/roachprod/ssh"
 	"html/template"
 	"io/ioutil"
 	"log"
@@ -10,30 +11,30 @@ import (
 	"time"
 )
 
-type cassandra struct{}
+type Cassandra struct{}
 
-func (cassandra) start(c *syncedCluster) {
+func (Cassandra) Start(c *SyncedCluster) {
 	yamlPath, err := makeCassandraYAML(c)
 	if err != nil {
 		log.Fatal(err)
 	}
-	c.put(yamlPath, "./cassandra.yaml")
+	c.Put(yamlPath, "./cassandra.yaml")
 	_ = os.Remove(yamlPath)
 
-	display := fmt.Sprintf("%s: starting cassandra (be patient)", c.name)
-	nodes := c.serverNodes()
-	c.parallel(display, len(nodes), 1, func(i int) ([]byte, error) {
+	display := fmt.Sprintf("%s: starting cassandra (be patient)", c.Name)
+	nodes := c.ServerNodes()
+	c.Parallel(display, len(nodes), 1, func(i int) ([]byte, error) {
 		host := c.host(nodes[i])
 		user := c.user(nodes[i])
 
 		if err := func() error {
-			session, err := newSSHSession(user, host)
+			session, err := ssh.NewSSHSession(user, host)
 			if err != nil {
 				return err
 			}
 			defer session.Close()
 
-			cmd := c.env + ` cassandra` +
+			cmd := c.Env + ` cassandra` +
 				` -Dcassandra.config=file://${PWD}/cassandra.yaml` +
 				` -Dcassandra.ring_delay_ms=3000` +
 				` > cassandra.stdout 2> cassandra.stderr`
@@ -45,7 +46,7 @@ func (cassandra) start(c *syncedCluster) {
 
 		for {
 			up, err := func() (bool, error) {
-				session, err := newSSHSession(user, host)
+				session, err := ssh.NewSSHSession(user, host)
 				if err != nil {
 					return false, err
 				}
@@ -69,20 +70,20 @@ func (cassandra) start(c *syncedCluster) {
 	})
 }
 
-func (cassandra) nodeURL(_ *syncedCluster, host string, port int) string {
+func (Cassandra) NodeURL(_ *SyncedCluster, host string, port int) string {
 	return fmt.Sprintf("'cassandra://%s:%d'", host, port)
 }
 
-func (cassandra) nodePort(c *syncedCluster, index int) int {
-	if c.isLocal() {
+func (Cassandra) NodePort(c *SyncedCluster, index int) int {
+	if c.IsLocal() {
 		// TODO(peter): This will require a bit of work to adjust ports in
 		// cassandra.yaml.
 	}
 	return 9042
 }
 
-func makeCassandraYAML(c *syncedCluster) (string, error) {
-	ip, err := c.getInternalIP(c.serverNodes()[0])
+func makeCassandraYAML(c *SyncedCluster) (string, error) {
+	ip, err := c.GetInternalIP(c.ServerNodes()[0])
 	if err != nil {
 		return "", err
 	}

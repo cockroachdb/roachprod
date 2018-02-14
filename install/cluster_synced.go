@@ -1,4 +1,4 @@
-package main
+package install
 
 import (
 	"bufio"
@@ -18,56 +18,62 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cockroachdb/roachprod/cloud"
+	"github.com/cockroachdb/roachprod/config"
+	"github.com/cockroachdb/roachprod/ssh"
+	"github.com/cockroachdb/roachprod/ui"
 	"github.com/pkg/errors"
 )
 
-type clusterImpl interface {
-	start(c *syncedCluster)
-	nodeURL(c *syncedCluster, host string, port int) string
-	nodePort(c *syncedCluster, index int) int
+type ClusterImpl interface {
+	Start(c *SyncedCluster)
+	NodeURL(c *SyncedCluster, host string, port int) string
+	NodePort(c *SyncedCluster, index int) int
 }
 
-// A syncedCluster is created from the information in the synced hosts file.
+// A SyncedCluster is created from the information in the synced hosts file
+// and is used as the target for installing and managing various software
+// components.
 //
 // TODO(benesch): unify with CloudCluster.
-type syncedCluster struct {
+type SyncedCluster struct {
 	// name, vms, users, localities are populated at init time.
-	name       string
-	vms        []string
-	users      []string
-	localities []string
+	Name       string
+	VMs        []string
+	Users      []string
+	Localities []string
 	// all other fields are populated in newCluster.
-	nodes   []int
-	loadGen int
-	secure  bool
-	env     string
-	args    []string
-	impl    clusterImpl
+	Nodes   []int
+	LoadGen int
+	Secure  bool
+	Env     string
+	Args    []string
+	Impl    ClusterImpl
 }
 
-func (c *syncedCluster) host(index int) string {
-	return c.vms[index-1]
+func (c *SyncedCluster) host(index int) string {
+	return c.VMs[index-1]
 }
 
-func (c *syncedCluster) user(index int) string {
-	return c.users[index-1]
+func (c *SyncedCluster) user(index int) string {
+	return c.Users[index-1]
 }
 
-func (c *syncedCluster) locality(index int) string {
-	return c.localities[index-1]
+func (c *SyncedCluster) locality(index int) string {
+	return c.Localities[index-1]
 }
 
-func (c *syncedCluster) isLocal() bool {
-	return c.name == local
+func (c *SyncedCluster) IsLocal() bool {
+	return c.Name == config.Local
 }
 
-func (c *syncedCluster) serverNodes() []int {
-	if c.loadGen == -1 {
-		return c.nodes
+func (c *SyncedCluster) ServerNodes() []int {
+	if c.LoadGen == -1 {
+		return c.Nodes
 	}
-	newNodes := make([]int, 0, len(c.nodes))
-	for _, i := range c.nodes {
-		if i != c.loadGen {
+	newNodes := make([]int, 0, len(c.Nodes))
+	for _, i := range c.Nodes {
+		if i != c.LoadGen {
 			newNodes = append(newNodes, i)
 		}
 	}
@@ -75,12 +81,12 @@ func (c *syncedCluster) serverNodes() []int {
 }
 
 // getInternalIP returns the internal IP address of the specified node.
-func (c *syncedCluster) getInternalIP(index int) (string, error) {
-	if c.isLocal() {
+func (c *SyncedCluster) GetInternalIP(index int) (string, error) {
+	if c.IsLocal() {
 		return c.host(index), nil
 	}
 
-	session, err := newSSHSession(c.user(index), c.host(index))
+	session, err := ssh.NewSSHSession(c.user(index), c.host(index))
 	if err != nil {
 		return "", nil
 	}
@@ -94,14 +100,14 @@ func (c *syncedCluster) getInternalIP(index int) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-func (c *syncedCluster) start() {
-	c.impl.start(c)
+func (c *SyncedCluster) Start() {
+	c.Impl.Start(c)
 }
 
-func (c *syncedCluster) stop() {
-	display := fmt.Sprintf("%s: stopping", c.name)
-	c.parallel(display, len(c.nodes), 0, func(i int) ([]byte, error) {
-		session, err := newSSHSession(c.user(c.nodes[i]), c.host(c.nodes[i]))
+func (c *SyncedCluster) Stop() {
+	display := fmt.Sprintf("%s: stopping", c.Name)
+	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 		if err != nil {
 			return nil, err
 		}
@@ -110,16 +116,16 @@ func (c *syncedCluster) stop() {
 		cmd := `pkill -9 "cockroach|java|mongo|kv|ycsb" || true ;
 `
 		cmd += fmt.Sprintf("kill -9 $(lsof -t -i :%d -i :%d) 2>/dev/null || true ;\n",
-			cockroach{}.nodePort(c, c.nodes[i]),
-			cassandra{}.nodePort(c, c.nodes[i]))
+			Cockroach{}.NodePort(c, c.Nodes[i]),
+			Cassandra{}.NodePort(c, c.Nodes[i]))
 		return session.CombinedOutput(cmd)
 	})
 }
 
-func (c *syncedCluster) wipe() {
-	display := fmt.Sprintf("%s: wiping", c.name)
-	c.parallel(display, len(c.nodes), 0, func(i int) ([]byte, error) {
-		session, err := newSSHSession(c.user(c.nodes[i]), c.host(c.nodes[i]))
+func (c *SyncedCluster) Wipe() {
+	display := fmt.Sprintf("%s: wiping", c.Name)
+	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 		if err != nil {
 			return nil, err
 		}
@@ -128,10 +134,10 @@ func (c *syncedCluster) wipe() {
 		cmd := `pkill -9 "cockroach|java|mongo|kv|ycsb" || true ;
 `
 		cmd += fmt.Sprintf("kill -9 $(lsof -t -i :%d -i :%d) 2>/dev/null || true ;\n",
-			cockroach{}.nodePort(c, c.nodes[i]),
-			cassandra{}.nodePort(c, c.nodes[i]))
-		if c.isLocal() {
-			cmd += fmt.Sprintf(`rm -fr ${HOME}/local/cockroach%d ;`, c.nodes[i])
+			Cockroach{}.NodePort(c, c.Nodes[i]),
+			Cassandra{}.NodePort(c, c.Nodes[i]))
+		if c.IsLocal() {
+			cmd += fmt.Sprintf(`rm -fr ${HOME}/local/cockroach%d ;`, c.Nodes[i])
 		} else {
 			cmd += `find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; ;
 rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo-data} \; ;
@@ -141,11 +147,11 @@ rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo
 	})
 }
 
-func (c *syncedCluster) status() {
-	display := fmt.Sprintf("%s: status", c.name)
-	results := make([]string, len(c.nodes))
-	c.parallel(display, len(c.nodes), 0, func(i int) ([]byte, error) {
-		session, err := newSSHSession(c.user(c.nodes[i]), c.host(c.nodes[i]))
+func (c *SyncedCluster) Status() {
+	display := fmt.Sprintf("%s: status", c.Name)
+	results := make([]string, len(c.Nodes))
+	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 		if err != nil {
 			results[i] = err.Error()
 			return nil, nil
@@ -153,10 +159,10 @@ func (c *syncedCluster) status() {
 		defer session.Close()
 
 		cmd := fmt.Sprintf("out=$(lsof -i :%d -i :%d -sTCP:LISTEN",
-			cockroach{}.nodePort(c, c.nodes[i]),
-			cassandra{}.nodePort(c, c.nodes[i]))
+			Cockroach{}.NodePort(c, c.Nodes[i]),
+			Cassandra{}.NodePort(c, c.Nodes[i]))
 		cmd += ` | awk '!/COMMAND/ {print $1, $2}' | sort | uniq);
-vers=$(` + binary + ` version 2>/dev/null | awk '/Build Tag:/ {print $NF}')
+vers=$(` + config.Binary + ` version 2>/dev/null | awk '/Build Tag:/ {print $NF}')
 if [ -n "${out}" -a -n "${vers}" ]; then
   echo ${out} | sed "s/cockroach/cockroach-${vers}/g"
 else
@@ -178,22 +184,22 @@ fi
 	})
 
 	for i, r := range results {
-		fmt.Printf("  %2d: %s\n", c.nodes[i], r)
+		fmt.Printf("  %2d: %s\n", c.Nodes[i], r)
 	}
 }
 
 type nodeMonitorInfo struct {
-	index int
-	msg   string
+	Index int
+	Msg   string
 }
 
-func (c *syncedCluster) monitor() chan nodeMonitorInfo {
+func (c *SyncedCluster) Monitor() chan nodeMonitorInfo {
 	ch := make(chan nodeMonitorInfo)
-	nodes := c.serverNodes()
+	nodes := c.ServerNodes()
 
 	for i := range nodes {
 		go func(i int) {
-			session, err := newSSHSession(c.user(nodes[i]), c.host(nodes[i]))
+			session, err := ssh.NewSSHSession(c.user(nodes[i]), c.host(nodes[i]))
 			if err != nil {
 				ch <- nodeMonitorInfo{nodes[i], err.Error()}
 				return
@@ -241,7 +247,7 @@ while :; do
   fi
 done
 `,
-				cockroach{}.nodePort(c, nodes[i]))
+				Cockroach{}.NodePort(c, nodes[i]))
 
 			if err := session.Run(cmd); err != nil {
 				ch <- nodeMonitorInfo{nodes[i], err.Error()}
@@ -253,12 +259,12 @@ done
 	return ch
 }
 
-func (c *syncedCluster) run(w io.Writer, nodes []int, title, cmd string) error {
-	display := fmt.Sprintf("%s: %s", c.name, title)
+func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
+	display := fmt.Sprintf("%s: %s", c.Name, title)
 	errors := make([]error, len(nodes))
 	results := make([]string, len(nodes))
-	c.parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
-		session, err := newSSHSession(c.user(nodes[i]), c.host(nodes[i]))
+	c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
+		session, err := ssh.NewSSHSession(c.user(nodes[i]), c.host(nodes[i]))
 		if err != nil {
 			errors[i] = err
 			results[i] = err.Error()
@@ -288,12 +294,12 @@ func (c *syncedCluster) run(w io.Writer, nodes []int, title, cmd string) error {
 	return nil
 }
 
-func (c *syncedCluster) wait() error {
-	display := fmt.Sprintf("%s: waiting for nodes to start", c.name)
-	errs := make([]error, len(c.nodes))
-	c.parallel(display, len(c.nodes), 0, func(i int) ([]byte, error) {
+func (c *SyncedCluster) Wait() error {
+	display := fmt.Sprintf("%s: waiting for nodes to start", c.Name)
+	errs := make([]error, len(c.Nodes))
+	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
 		for j := 0; j < 600; j++ {
-			session, err := newSSHSession(c.user(c.nodes[i]), c.host(c.nodes[i]))
+			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 			if err != nil {
 				time.Sleep(500 * time.Millisecond)
 				continue
@@ -319,7 +325,7 @@ func (c *syncedCluster) wait() error {
 	var foundErr bool
 	for i, err := range errs {
 		if err != nil {
-			fmt.Printf("  %2d: %v\n", c.nodes[i], err)
+			fmt.Printf("  %2d: %v\n", c.Nodes[i], err)
 			foundErr = true
 		}
 	}
@@ -329,20 +335,20 @@ func (c *syncedCluster) wait() error {
 	return nil
 }
 
-func (c *syncedCluster) cockroachVersions() map[string]int {
+func (c *SyncedCluster) CockroachVersions() map[string]int {
 	sha := make(map[string]int)
 	var mu sync.Mutex
 
-	display := fmt.Sprintf("%s: cockroach version", c.name)
-	nodes := c.serverNodes()
-	c.parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
-		session, err := newSSHSession(c.user(c.nodes[i]), c.host(nodes[i]))
+	display := fmt.Sprintf("%s: cockroach version", c.Name)
+	nodes := c.ServerNodes()
+	c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
+		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(nodes[i]))
 		if err != nil {
 			return nil, err
 		}
 		defer session.Close()
 
-		cmd := binary + " version | awk '/Build Tag:/ {print $NF}'"
+		cmd := config.Binary + " version | awk '/Build Tag:/ {print $NF}'"
 		out, err := session.CombinedOutput(cmd)
 		var s string
 		if err != nil {
@@ -359,21 +365,21 @@ func (c *syncedCluster) cockroachVersions() map[string]int {
 	return sha
 }
 
-func (c *syncedCluster) runLoad(cmd string, stdout, stderr io.Writer) error {
-	if c.loadGen == 0 {
-		log.Fatalf("%s: no load generator node specified", c.name)
+func (c *SyncedCluster) RunLoad(cmd string, stdout, stderr io.Writer) error {
+	if c.LoadGen == 0 {
+		log.Fatalf("%s: no load generator node specified", c.Name)
 	}
 
-	display := fmt.Sprintf("%s: retrieving IP addresses", c.name)
-	nodes := c.serverNodes()
+	display := fmt.Sprintf("%s: retrieving IP addresses", c.Name)
+	nodes := c.ServerNodes()
 	ips := make([]string, len(nodes))
-	c.parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
+	c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
 		var err error
-		ips[i], err = c.getInternalIP(nodes[i])
+		ips[i], err = c.GetInternalIP(nodes[i])
 		return nil, err
 	})
 
-	session, err := newSSHSession(c.user(c.loadGen), c.host(c.loadGen))
+	session, err := ssh.NewSSHSession(c.user(c.LoadGen), c.host(c.LoadGen))
 	if err != nil {
 		return err
 	}
@@ -398,7 +404,7 @@ func (c *syncedCluster) runLoad(cmd string, stdout, stderr io.Writer) error {
 
 	var urls []string
 	for i, ip := range ips {
-		urls = append(urls, c.impl.nodeURL(c, ip, c.impl.nodePort(c, nodes[i])))
+		urls = append(urls, c.Impl.NodeURL(c, ip, c.Impl.NodePort(c, nodes[i])))
 	}
 	return session.Run("ulimit -n 16384; " + cmd + " " + strings.Join(urls, " "))
 }
@@ -411,30 +417,30 @@ func formatProgress(p float64) string {
 	return fmt.Sprintf("[%s%s] %.0f%%", progressDone[i:], progressTodo[:i], 100*p)
 }
 
-func (c *syncedCluster) put(src, dest string) {
+func (c *SyncedCluster) Put(src, dest string) {
 	// TODO(peter): Only put 10 nodes at a time. When a node completes, output a
 	// line indicating that.
-	fmt.Printf("%s: putting %s %s\n", c.name, src, dest)
+	fmt.Printf("%s: putting %s %s\n", c.Name, src, dest)
 
 	type result struct {
 		index int
 		err   error
 	}
 
-	var writer uiWriter
-	results := make(chan result, len(c.nodes))
-	lines := make([]string, len(c.nodes))
+	var writer ui.Writer
+	results := make(chan result, len(c.Nodes))
+	lines := make([]string, len(c.Nodes))
 	var linesMu sync.Mutex
 
 	var wg sync.WaitGroup
-	for i := range c.nodes {
+	for i := range c.Nodes {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			session, err := newSSHSession(c.user(c.nodes[i]), c.host(c.nodes[i]))
+			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 			if err == nil {
 				defer session.Close()
-				err = scpPut(src, dest, func(p float64) {
+				err = ssh.ScpPut(src, dest, func(p float64) {
 					linesMu.Lock()
 					defer linesMu.Unlock()
 					lines[i] = formatProgress(p)
@@ -450,7 +456,7 @@ func (c *syncedCluster) put(src, dest string) {
 	}()
 
 	var ticker *time.Ticker
-	if isStdoutTerminal {
+	if ui.IsStdoutTerminal {
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
 		ticker = time.NewTicker(1000 * time.Millisecond)
@@ -464,7 +470,7 @@ func (c *syncedCluster) put(src, dest string) {
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
-			if !isStdoutTerminal {
+			if !ui.IsStdoutTerminal {
 				fmt.Printf(".")
 			}
 		case r, ok := <-results:
@@ -480,10 +486,10 @@ func (c *syncedCluster) put(src, dest string) {
 				linesMu.Unlock()
 			}
 		}
-		if isStdoutTerminal {
+		if ui.IsStdoutTerminal {
 			linesMu.Lock()
 			for i := range lines {
-				fmt.Fprintf(&writer, "  %2d: ", c.nodes[i])
+				fmt.Fprintf(&writer, "  %2d: ", c.Nodes[i])
 				if lines[i] != "" {
 					fmt.Fprintf(&writer, "%s", lines[i])
 				} else {
@@ -497,11 +503,11 @@ func (c *syncedCluster) put(src, dest string) {
 		}
 	}
 
-	if !isStdoutTerminal {
+	if !ui.IsStdoutTerminal {
 		fmt.Printf("\n")
 		linesMu.Lock()
 		for i := range lines {
-			fmt.Printf("  %2d: %s\n", c.nodes[i], lines[i])
+			fmt.Printf("  %2d: %s\n", c.Nodes[i], lines[i])
 		}
 		linesMu.Unlock()
 	}
@@ -511,35 +517,35 @@ func (c *syncedCluster) put(src, dest string) {
 	}
 }
 
-func (c *syncedCluster) get(src, dest string) {
+func (c *SyncedCluster) Get(src, dest string) {
 	// TODO(peter): Only get 10 nodes at a time. When a node completes, output a
 	// line indicating that.
-	fmt.Printf("%s: getting %s %s\n", c.name, src, dest)
+	fmt.Printf("%s: getting %s %s\n", c.Name, src, dest)
 
 	type result struct {
 		index int
 		err   error
 	}
 
-	var writer uiWriter
-	results := make(chan result, len(c.nodes))
-	lines := make([]string, len(c.nodes))
+	var writer ui.Writer
+	results := make(chan result, len(c.Nodes))
+	lines := make([]string, len(c.Nodes))
 	var linesMu sync.Mutex
 
 	var wg sync.WaitGroup
-	for i := range c.nodes {
+	for i := range c.Nodes {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			session, err := newSSHSession(c.user(c.nodes[i]), c.host(c.nodes[i]))
+			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 			if err == nil {
 				defer session.Close()
 				dest := dest
-				if len(c.nodes) > 1 {
-					base := fmt.Sprintf("%d.%s", c.nodes[i], filepath.Base(dest))
+				if len(c.Nodes) > 1 {
+					base := fmt.Sprintf("%d.%s", c.Nodes[i], filepath.Base(dest))
 					dest = filepath.Join(filepath.Dir(dest), base)
 				}
-				err = scpGet(src, dest, func(p float64) {
+				err = ssh.ScpGet(src, dest, func(p float64) {
 					linesMu.Lock()
 					defer linesMu.Unlock()
 					lines[i] = formatProgress(p)
@@ -555,7 +561,7 @@ func (c *syncedCluster) get(src, dest string) {
 	}()
 
 	var ticker *time.Ticker
-	if isStdoutTerminal {
+	if ui.IsStdoutTerminal {
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
 		ticker = time.NewTicker(1000 * time.Millisecond)
@@ -569,7 +575,7 @@ func (c *syncedCluster) get(src, dest string) {
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
-			if !isStdoutTerminal {
+			if !ui.IsStdoutTerminal {
 				fmt.Printf(".")
 			}
 		case r, ok := <-results:
@@ -585,10 +591,10 @@ func (c *syncedCluster) get(src, dest string) {
 				linesMu.Unlock()
 			}
 		}
-		if isStdoutTerminal {
+		if ui.IsStdoutTerminal {
 			linesMu.Lock()
 			for i := range lines {
-				fmt.Fprintf(&writer, "  %2d: ", c.nodes[i])
+				fmt.Fprintf(&writer, "  %2d: ", c.Nodes[i])
 				if lines[i] != "" {
 					fmt.Fprintf(&writer, "%s", lines[i])
 				} else {
@@ -602,11 +608,11 @@ func (c *syncedCluster) get(src, dest string) {
 		}
 	}
 
-	if !isStdoutTerminal {
+	if !ui.IsStdoutTerminal {
 		fmt.Printf("\n")
 		linesMu.Lock()
 		for i := range lines {
-			fmt.Printf("  %2d: %s\n", c.nodes[i], lines[i])
+			fmt.Printf("  %2d: %s\n", c.Nodes[i], lines[i])
 		}
 		linesMu.Unlock()
 	}
@@ -619,30 +625,30 @@ func (c *syncedCluster) get(src, dest string) {
 var parameterRe = regexp.MustCompile(`{[^}]*}`)
 var pgurlRe = regexp.MustCompile(`{pgurl(:[-0-9]+)?}`)
 
-func (c *syncedCluster) pgurls(nodes []int) map[int]string {
+func (c *SyncedCluster) pgurls(nodes []int) map[int]string {
 	ips := make([]string, len(nodes))
-	c.parallel("", len(nodes), 0, func(i int) ([]byte, error) {
+	c.Parallel("", len(nodes), 0, func(i int) ([]byte, error) {
 		var err error
-		ips[i], err = c.getInternalIP(nodes[i])
+		ips[i], err = c.GetInternalIP(nodes[i])
 		return nil, err
 	})
 
 	m := make(map[int]string, len(ips))
 	for i, ip := range ips {
-		m[nodes[i]] = c.impl.nodeURL(c, ip, c.impl.nodePort(c, nodes[i]))
+		m[nodes[i]] = c.Impl.NodeURL(c, ip, c.Impl.NodePort(c, nodes[i]))
 	}
 	return m
 }
 
-func (c *syncedCluster) ssh(args []string) error {
-	if len(c.nodes) != 1 {
-		return fmt.Errorf("invalid number of nodes for ssh: %d", c.nodes)
+func (c *SyncedCluster) Ssh(args []string) error {
+	if len(c.Nodes) != 1 {
+		return fmt.Errorf("invalid number of nodes for ssh: %d", c.Nodes)
 	}
 
 	allArgs := []string{
 		"ssh",
-		fmt.Sprintf("%s@%s", c.user(c.nodes[0]), c.host(c.nodes[0])),
-		"-i", filepath.Join(osUser.HomeDir, ".ssh", "google_compute_engine"),
+		fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.host(c.Nodes[0])),
+		"-i", filepath.Join(config.OsUser.HomeDir, ".ssh", "google_compute_engine"),
 		"-o", "StrictHostKeyChecking=no",
 	}
 
@@ -663,10 +669,10 @@ func (c *syncedCluster) ssh(args []string) error {
 			}
 
 			if urls == nil {
-				urls = c.pgurls(allNodes(len(c.vms)))
+				urls = c.pgurls(cloud.AllNodes(len(c.VMs)))
 			}
 
-			nodes, err := listNodes(m[1], len(c.vms))
+			nodes, err := cloud.ListNodes(m[1], len(c.VMs))
 			if err != nil {
 				return err.Error()
 			}
@@ -690,27 +696,27 @@ func (c *syncedCluster) ssh(args []string) error {
 	return syscall.Exec(sshPath, allArgs, os.Environ())
 }
 
-func (c *syncedCluster) stopLoad() {
-	if c.loadGen == 0 {
-		log.Fatalf("no load generator node specified for cluster: %s", c.name)
+func (c *SyncedCluster) stopLoad() {
+	if c.LoadGen == 0 {
+		log.Fatalf("no load generator node specified for cluster: %s", c.Name)
 	}
 
-	display := fmt.Sprintf("%s: stopping load", c.name)
-	c.parallel(display, 1, 0, func(i int) ([]byte, error) {
-		session, err := newSSHSession(c.user(c.loadGen), c.host(c.loadGen))
+	display := fmt.Sprintf("%s: stopping load", c.Name)
+	c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
+		session, err := ssh.NewSSHSession(c.user(c.LoadGen), c.host(c.LoadGen))
 		if err != nil {
 			return nil, err
 		}
 		defer session.Close()
 
 		cmd := fmt.Sprintf("kill -9 $(lsof -t -i :%d -i :%d) 2>/dev/null || true",
-			cockroach{}.nodePort(c, c.nodes[i]),
-			cassandra{}.nodePort(c, c.nodes[i]))
+			Cockroach{}.NodePort(c, c.Nodes[i]),
+			Cassandra{}.NodePort(c, c.Nodes[i]))
 		return session.CombinedOutput(cmd)
 	})
 }
 
-func (c *syncedCluster) parallel(display string, count, concurrency int, fn func(i int) ([]byte, error)) {
+func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func(i int) ([]byte, error)) {
 	if concurrency == 0 || concurrency > count {
 		concurrency = count
 	}
@@ -744,14 +750,14 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 		close(results)
 	}()
 
-	var writer uiWriter
+	var writer ui.Writer
 	out := io.Writer(os.Stdout)
 	if display == "" {
 		out = ioutil.Discard
 	}
 
 	var ticker *time.Ticker
-	if isStdoutTerminal {
+	if ui.IsStdoutTerminal {
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
 		ticker = time.NewTicker(1000 * time.Millisecond)
@@ -768,7 +774,7 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
-			if !isStdoutTerminal {
+			if !ui.IsStdoutTerminal {
 				fmt.Fprintf(out, ".")
 			}
 		case r, ok := <-results:
@@ -784,7 +790,7 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 			}
 		}
 
-		if isStdoutTerminal {
+		if ui.IsStdoutTerminal {
 			fmt.Fprint(&writer, display)
 			var n int
 			for i := range complete {
@@ -802,7 +808,7 @@ func (c *syncedCluster) parallel(display string, count, concurrency int, fn func
 		}
 	}
 
-	if !isStdoutTerminal {
+	if !ui.IsStdoutTerminal {
 		fmt.Fprintf(out, "\n")
 	}
 
