@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/hashicorp/go-version"
+  packages = ["."]
+  revision = "4fe82ae3040f80a03d04d2cccb5606a626b8e1ee"
+
+[[projects]]
   name = "github.com/inconshreveable/mousetrap"
   packages = ["."]
   revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
@@ -64,6 +70,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b352922294196cc611d6400bd03cf4f85166e0fc1b17820c2f00faa9324f5de4"
+  inputs-digest = "c46b3bc4a2422bb659b3b08f533c1a331d948a8f06a402f01c195533ddeab9ce"
   solver-name = "gps-cdcl"
   solver-version = 1
