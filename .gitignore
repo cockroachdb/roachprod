@@ -26,3 +26,4 @@ roachprod
 *.exe
 *.test
 *.prof
+.idea/
