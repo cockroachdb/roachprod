@@ -2,7 +2,10 @@ package main
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
+
+	"github.com/hashicorp/go-version"
 )
 
 var startOpts struct {
@@ -10,6 +13,30 @@ var startOpts struct {
 }
 
 type cockroach struct{}
+
+func getCockroachVersion(host, user, binary string) (*version.Version, error) {
+	session, err := newSSHSession(user, host)
+	if err != nil {
+		return nil, err
+	}
+	defer session.Close()
+
+	out, err := session.CombinedOutput(binary + " version")
+	if err != nil {
+		return nil, err
+	}
+
+	matches := regexp.MustCompile(`(?m)^Build Tag:\s+(.*)$`).FindSubmatch(out)
+	if len(matches) != 2 {
+		return nil, fmt.Errorf("unable to parse cockroach version output:%s", out)
+	}
+
+	version, err := version.NewVersion(string(matches[1]))
+	if err != nil {
+		return nil, err
+	}
+	return version, nil
+}
 
 func (r cockroach) start(c *syncedCluster) {
 	display := fmt.Sprintf("%s: starting", c.name)
@@ -23,6 +50,12 @@ func (r cockroach) start(c *syncedCluster) {
 	c.parallel(display, len(nodes), p, func(i int) ([]byte, error) {
 		host := c.host(nodes[i])
 		user := c.user(nodes[i])
+
+		vers, err := getCockroachVersion(host, user, binary)
+		if err != nil {
+			return nil, err
+		}
+
 		session, err := newSSHSession(user, host)
 		if err != nil {
 			return nil, err
@@ -46,15 +79,17 @@ func (r cockroach) start(c *syncedCluster) {
 		args = append(args, "--store=path="+dir)
 		args = append(args, "--log-dir="+logDir)
 		args = append(args, "--background")
-		cache := 25
-		if c.isLocal() {
-			cache /= len(nodes)
-			if cache == 0 {
-				cache = 1
+		if versionSatifies(vers, ">=1.1") {
+			cache := 25
+			if c.isLocal() {
+				cache /= len(nodes)
+				if cache == 0 {
+					cache = 1
+				}
 			}
+			args = append(args, fmt.Sprintf("--cache=%d%%", cache))
+			args = append(args, fmt.Sprintf("--max-sql-memory=%d%%", cache))
 		}
-		args = append(args, fmt.Sprintf("--cache=%d%%", cache))
-		args = append(args, fmt.Sprintf("--max-sql-memory=%d%%", cache))
 		args = append(args, fmt.Sprintf("--port=%d", port))
 		args = append(args, fmt.Sprintf("--http-port=%d", port+1))
 		if locality := c.locality(nodes[i]); locality != "" {
