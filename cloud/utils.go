@@ -1,4 +1,4 @@
-package main
+package cloud
 
 import (
 	"io/ioutil"
@@ -51,7 +51,7 @@ func writeStartupScript() (string, error) {
 	return tmpfile.Name(), nil
 }
 
-func versionSatifies(v *version.Version, constraintString string) bool {
+func VersionSatifies(v *version.Version, constraintString string) bool {
 	constraints, err := version.NewConstraint(constraintString)
 	if err != nil {
 		panic(err)
