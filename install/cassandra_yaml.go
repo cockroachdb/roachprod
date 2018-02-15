@@ -1,4 +1,4 @@
-package main
+package install
 
 const cassandraDiffYAML = `
 commitlog_sync: batch
