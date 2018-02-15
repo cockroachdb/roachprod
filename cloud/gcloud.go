@@ -1,4 +1,4 @@
-package main
+package cloud
 
 import (
 	"encoding/json"
@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"math"
 
+	"github.com/cockroachdb/roachprod/config"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -48,7 +49,7 @@ type jsonVM struct {
 	Labels            map[string]string
 	CreationTimestamp time.Time
 	NetworkInterfaces []struct {
-		NetworkIP string
+		NetworkIP     string
 		AccessConfigs []struct {
 			Name  string
 			NatIP string
@@ -90,7 +91,7 @@ type jsonAuth struct {
 	Status  string
 }
 
-func findActiveAccount() (string, error) {
+func FindActiveAccount() (string, error) {
 	args := []string{"auth", "list", "--format", "json", "--filter", "status~ACTIVE"}
 
 	accounts := make([]jsonAuth, 0)
@@ -119,16 +120,15 @@ func createVMs(names []string, opts VMOpts) error {
 	defer os.Remove(filename)
 
 	if !opts.GeoDistributed {
-		zones = []string{zones[0]}
+		config.Zones = []string{config.Zones[0]}
 	}
 
 	totalNodes := float64(len(names))
-	totalZones := float64(len(zones))
+	totalZones := float64(len(config.Zones))
 	nodesPerZone := int(math.Ceil(totalNodes / totalZones))
 
 	ct := int(0)
 	i := 0
-
 
 	// Fixed args.
 	args := []string{
@@ -160,7 +160,7 @@ func createVMs(names []string, opts VMOpts) error {
 	// divisible by the number of zones, then the extra machines will be allocated one per zone until there are
 	// no more extra machines left.
 	for i < len(names) {
-		argsWithZone := append(args[:len(args):len(args)], "--zone", zones[ct])
+		argsWithZone := append(args[:len(args):len(args)], "--zone", config.Zones[ct])
 		ct++
 		argsWithZone = append(argsWithZone, names[i:i+nodesPerZone]...)
 		i += nodesPerZone
@@ -233,7 +233,7 @@ func extendVM(name string, zone string, lifetime time.Duration) error {
 	return nil
 }
 
-func cleanSSH() error {
+func CleanSSH() error {
 	args := []string{"compute", "config-ssh", "--project", project, "--quiet", "--remove"}
 	cmd := exec.Command("gcloud", args...)
 
@@ -244,7 +244,7 @@ func cleanSSH() error {
 	return nil
 }
 
-func configSSH() error {
+func ConfigSSH() error {
 	args := []string{"compute", "config-ssh", "--project", project, "--quiet"}
 	cmd := exec.Command("gcloud", args...)
 

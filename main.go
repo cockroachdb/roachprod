@@ -8,11 +8,16 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	// Note that nearly all uses of this package will be replaced
+	// by calls to an instance of a CloudProvider
+	cld "github.com/cockroachdb/roachprod/cloud"
+	"github.com/cockroachdb/roachprod/config"
+	"github.com/cockroachdb/roachprod/install"
+	"github.com/cockroachdb/roachprod/ssh"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
@@ -27,76 +32,24 @@ stopping and wiping of clusters along with running load generators.
 }
 
 var (
-	osUser         *user.User
 	numNodes       int
 	username       string
 	destroyAfter   time.Duration
 	trackingFile   string
 	extendLifetime time.Duration
 	listDetails    bool
-	zones          []string
 	clusterType    = "cockroach"
 	secure         = false
 	nodeEnv        = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
 	nodeArgs       []string
-	binary         = "./cockroach"
-	clusters       = map[string]*syncedCluster{}
 )
-
-func allNodes(total int) []int {
-	r := make([]int, total)
-	for i := range r {
-		r[i] = i + 1
-	}
-	return r
-}
-
-func listNodes(s string, total int) ([]int, error) {
-	if s == "all" {
-		return allNodes(total), nil
-	}
-
-	m := map[int]bool{}
-	for _, p := range strings.Split(s, ",") {
-		parts := strings.Split(p, "-")
-		switch len(parts) {
-		case 1:
-			i, err := strconv.Atoi(parts[0])
-			if err != nil {
-				return nil, err
-			}
-			m[i] = true
-		case 2:
-			from, err := strconv.Atoi(parts[0])
-			if err != nil {
-				return nil, err
-			}
-			to, err := strconv.Atoi(parts[1])
-			if err != nil {
-				return nil, err
-			}
-			for i := from; i <= to; i++ {
-				m[i] = true
-			}
-		default:
-			return nil, fmt.Errorf("unable to parse nodes specification: %s", p)
-		}
-	}
-
-	r := make([]int, 0, len(m))
-	for i := range m {
-		r = append(r, i)
-	}
-	sort.Ints(r)
-	return r, nil
-}
 
 func findLocalBinary() error {
 	// For "local" clusters we have to find the binary to run and translate it to
 	// an absolute path. First, look for the binary in PATH.
-	path, err := exec.LookPath(binary)
+	path, err := exec.LookPath(config.Binary)
 	if err != nil {
-		if strings.HasPrefix(binary, "/") {
+		if strings.HasPrefix(config.Binary, "/") {
 			return err
 		}
 		// We're unable to find the binary in PATH and "binary" is a relative path:
@@ -105,7 +58,7 @@ func findLocalBinary() error {
 		if gopath == "" {
 			return err
 		}
-		path = gopath + "/src/github.com/cockroachdb/cockroach/" + binary
+		path = gopath + "/src/github.com/cockroachdb/cockroach/" + config.Binary
 		var err2 error
 		path, err2 = exec.LookPath(path)
 		if err2 != nil {
@@ -116,20 +69,60 @@ func findLocalBinary() error {
 	if err != nil {
 		return err
 	}
-	binary = path
+	config.Binary = path
 	return nil
+}
+
+// This is a temporary hack to break package dependency cycles.
+// It just calls the "real" ListCloud function and then initializes
+// the local cluster.  In a follow-on patch, the local cluster
+// will be just another type of CloudProvider, so we'll be able to
+// get rid of this hack.
+func listCloudAndLocal() (*cld.Cloud, error) {
+	cloud, err := cld.ListCloud()
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize the local cluster (if it exists)
+	if sc, ok := install.Clusters[config.Local]; ok {
+		c := &cld.CloudCluster{
+			Name:      config.Local,
+			User:      config.OSUser.Username,
+			CreatedAt: time.Now(),
+			Lifetime:  time.Hour,
+		}
+		cloud.Clusters[config.Local] = c
+
+		for range sc.VMs {
+			c.VMs = append(c.VMs, cld.VM{
+				Name:      "localhost",
+				CreatedAt: c.CreatedAt,
+				Lifetime:  time.Hour,
+				PrivateIP: "127.0.0.1",
+				PublicIP:  "127.0.0.1",
+				Zone:      config.Local,
+			})
+		}
+	}
+
+	// Sort VMs for each cluster. We want to make sure we always have the same order.
+	for _, c := range cloud.Clusters {
+		sort.Sort(c.VMs)
+	}
+	return cloud, nil
 }
 
 func sortedClusters() []string {
 	var r []string
-	for n := range clusters {
+	for n := range install.Clusters {
 		r = append(r, n)
 	}
 	sort.Strings(r)
 	return r
 }
 
-func newCluster(name string, reserveLoadGen bool) (*syncedCluster, error) {
+func newCluster(name string, reserveLoadGen bool) (*install.SyncedCluster, error) {
 	nodeNames := "all"
 	{
 		parts := strings.Split(name, ":")
@@ -146,7 +139,7 @@ func newCluster(name string, reserveLoadGen bool) (*syncedCluster, error) {
 		}
 	}
 
-	c, ok := clusters[name]
+	c, ok := install.Clusters[name]
 	if !ok {
 		return nil, fmt.Errorf(`unknown cluster: %s
 
@@ -160,31 +153,31 @@ Hint: use "roachprod sync" to update the list of available clusters.
 
 	switch clusterType {
 	case "cockroach":
-		c.impl = cockroach{}
+		c.Impl = install.Cockroach{}
 	case "cassandra":
-		c.impl = cassandra{}
+		c.Impl = install.Cassandra{}
 	default:
 		return nil, fmt.Errorf("unknown cluster type: %s", clusterType)
 	}
 
-	nodes, err := listNodes(nodeNames, len(c.vms))
+	nodes, err := install.ListNodes(nodeNames, len(c.VMs))
 	if err != nil {
 		return nil, err
 	}
 
-	c.nodes = nodes
+	c.Nodes = nodes
 	if reserveLoadGen {
 		// TODO(marc): make loadgen node configurable. For now, we always use the
 		// last ID (1-indexed).
-		c.loadGen = len(c.vms)
+		c.LoadGen = len(c.VMs)
 	} else {
-		c.loadGen = -1
+		c.LoadGen = -1
 	}
-	c.secure = secure
-	c.env = nodeEnv
-	c.args = nodeArgs
+	c.Secure = secure
+	c.Env = nodeEnv
+	c.Args = nodeArgs
 
-	if c.isLocal() {
+	if c.IsLocal() {
 		if err := findLocalBinary(); err != nil {
 			return nil, err
 		}
@@ -196,14 +189,14 @@ func verifyClusterName(clusterName string) (string, error) {
 	if len(clusterName) == 0 {
 		return "", fmt.Errorf("cluster name cannot be blank")
 	}
-	if clusterName == local {
+	if clusterName == config.Local {
 		return clusterName, nil
 	}
 
 	account := username
 	if len(username) == 0 {
 		var err error
-		account, err = findActiveAccount()
+		account, err = cld.FindActiveAccount()
 		if err != nil {
 			return "", err
 		}
@@ -230,7 +223,7 @@ func verifyClusterName(clusterName string) (string, error) {
 	return clusterName, nil
 }
 
-var createVMOpts VMOpts
+var createVMOpts cld.VMOpts
 
 var createCmd = &cobra.Command{
 	Use:          "create <cluster id>",
@@ -253,8 +246,8 @@ var createCmd = &cobra.Command{
 		}
 		fmt.Printf("Creating cluster %s with %d nodes\n", clusterName, numNodes)
 
-		if clusterName != local {
-			cloud, err := listCloud()
+		if clusterName != config.Local {
+			cloud, err := listCloudAndLocal()
 			if err != nil {
 				return err
 			}
@@ -262,20 +255,20 @@ var createCmd = &cobra.Command{
 				return fmt.Errorf("cluster %s already exists", clusterName)
 			}
 		} else {
-			if _, ok := clusters[clusterName]; ok {
+			if _, ok := install.Clusters[clusterName]; ok {
 				return fmt.Errorf("cluster %s already exists", clusterName)
 			}
 		}
 
-		if err := createCluster(clusterName, numNodes, createVMOpts); err != nil {
+		if err := cld.CreateCluster(clusterName, numNodes, createVMOpts); err != nil {
 			return err
 		}
 
 		fmt.Println("OK")
 
-		if clusterName != local {
+		if clusterName != config.Local {
 			{
-				cloud, err := listCloud()
+				cloud, err := listCloudAndLocal()
 				if err != nil {
 					return err
 				}
@@ -293,7 +286,7 @@ var createCmd = &cobra.Command{
 
 			{
 				// Wait for the nodes in the cluster to start.
-				clusters = map[string]*syncedCluster{}
+				install.Clusters = map[string]*install.SyncedCluster{}
 				if err := loadClusters(); err != nil {
 					return err
 				}
@@ -303,7 +296,7 @@ var createCmd = &cobra.Command{
 					return err
 				}
 
-				if err := c.wait(); err != nil {
+				if err := c.Wait(); err != nil {
 					return err
 				}
 			}
@@ -327,8 +320,8 @@ var destroyCmd = &cobra.Command{
 			return err
 		}
 
-		if clusterName != local {
-			cloud, err := listCloud()
+		if clusterName != config.Local {
+			cloud, err := listCloudAndLocal()
 			if err != nil {
 				return err
 			}
@@ -339,19 +332,19 @@ var destroyCmd = &cobra.Command{
 			}
 
 			fmt.Printf("Destroying cluster %s with %d nodes\n", clusterName, len(c.VMs))
-			if err := destroyCluster(c); err != nil {
+			if err := cld.DestroyCluster(c); err != nil {
 				return err
 			}
 		} else {
-			if _, ok := clusters[clusterName]; !ok {
+			if _, ok := install.Clusters[clusterName]; !ok {
 				return fmt.Errorf("cluster %s does not exist", clusterName)
 			}
 			c, err := newCluster(clusterName, false /* reserveLoadGen */)
 			if err != nil {
 				return err
 			}
-			c.wipe()
-			if err := os.Remove(filepath.Join(os.ExpandEnv(defaultHostDir), c.name)); err != nil {
+			c.Wipe()
+			if err := os.Remove(filepath.Join(os.ExpandEnv(config.DefaultHostDir), c.Name)); err != nil {
 				return err
 			}
 		}
@@ -366,13 +359,13 @@ var listCmd = &cobra.Command{
 	Short: "retrieve the list of clusters",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		account, err := findActiveAccount()
+		account, err := cld.FindActiveAccount()
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Account: %s\n", account)
 
-		cloud, err := listCloud()
+		cloud, err := listCloudAndLocal()
 		if err != nil {
 			return err
 		}
@@ -384,7 +377,7 @@ var listCmd = &cobra.Command{
 				c.PrintDetails()
 			} else {
 				fmt.Fprintf(tw, "%s:\t%d", c.Name, len(c.VMs))
-				if !c.isLocal() {
+				if !c.IsLocal() {
 					fmt.Fprintf(tw, "\t(%s)", c.LifetimeRemaining().Round(time.Second))
 				} else {
 					fmt.Fprintf(tw, "\t(-)")
@@ -417,7 +410,7 @@ var syncCmd = &cobra.Command{
 	Short: "sync ssh keys/config and hosts files",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cloud, err := listCloud()
+		cloud, err := listCloudAndLocal()
 		if err != nil {
 			return err
 		}
@@ -430,7 +423,7 @@ var lockFile = os.ExpandEnv("$HOME/.roachprod/LOCK")
 
 var bashCompletion = os.ExpandEnv("$HOME/.roachprod/bash-completion.sh")
 
-func syncAll(cloud *Cloud) error {
+func syncAll(cloud *cld.Cloud) error {
 	fmt.Println("Syncing...")
 
 	// Acquire a filesystem lock so that two concurrent `roachprod sync`
@@ -447,7 +440,7 @@ func syncAll(cloud *Cloud) error {
 	if err := syncHosts(cloud); err != nil {
 		return err
 	}
-	if err := cleanSSH(); err != nil {
+	if err := cld.CleanSSH(); err != nil {
 		return err
 	}
 
@@ -463,7 +456,7 @@ func syncAll(cloud *Cloud) error {
 		}
 		rootCmd.GenBashCompletionFile(bashCompletion)
 	}
-	return configSSH()
+	return cld.ConfigSSH()
 }
 
 var gcCmd = &cobra.Command{
@@ -471,12 +464,12 @@ var gcCmd = &cobra.Command{
 	Short: "GC expired clusters; sends email if properly configured\n",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cloud, err := listCloud()
+		cloud, err := listCloudAndLocal()
 		if err != nil {
 			return err
 		}
 
-		return gcClusters(cloud, trackingFile, destroyAfter)
+		return cld.GCClusters(cloud, trackingFile, destroyAfter)
 	},
 }
 
@@ -494,7 +487,7 @@ var extendCmd = &cobra.Command{
 			return err
 		}
 
-		cloud, err := listCloud()
+		cloud, err := listCloudAndLocal()
 		if err != nil {
 			return err
 		}
@@ -504,12 +497,12 @@ var extendCmd = &cobra.Command{
 			return fmt.Errorf("cluster %s does not exist", clusterName)
 		}
 
-		if err := extendCluster(c, extendLifetime); err != nil {
+		if err := cld.ExtendCluster(c, extendLifetime); err != nil {
 			return err
 		}
 
 		// Reload the clusters and print details.
-		cloud, err = listCloud()
+		cloud, err = listCloudAndLocal()
 		if err != nil {
 			return err
 		}
@@ -535,7 +528,7 @@ var startCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		c.start()
+		c.Start()
 		return nil
 	},
 }
@@ -550,7 +543,7 @@ var stopCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		c.stop()
+		c.Stop()
 		return nil
 	},
 }
@@ -565,7 +558,7 @@ var statusCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		c.status()
+		c.Status()
 		return nil
 	},
 }
@@ -580,8 +573,8 @@ var monitorCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		for i := range c.monitor() {
-			fmt.Printf("%d: %s\n", i.index, i.msg)
+		for i := range c.Monitor() {
+			fmt.Printf("%d: %s\n", i.Index, i.Msg)
 		}
 		return nil
 	},
@@ -597,7 +590,7 @@ var wipeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		c.wipe()
+		c.Wipe()
 		return nil
 	},
 }
@@ -619,7 +612,7 @@ var runCmd = &cobra.Command{
 			title = title[:27] + "..."
 		}
 
-		_ = c.run(os.Stdout, c.nodes, title, cmd)
+		_ = c.Run(os.Stdout, c.Nodes, title, cmd)
 		return nil
 	},
 }
@@ -664,7 +657,7 @@ var installCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return install(c, args[1:])
+		return install.Install(c, args[1:])
 	},
 }
 
@@ -683,7 +676,7 @@ var putCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		c.put(src, dest)
+		c.Put(src, dest)
 		return nil
 	},
 }
@@ -704,7 +697,7 @@ multiple nodes the destination file name will be prefixed with the node number.`
 		if err != nil {
 			return err
 		}
-		c.get(src, dest)
+		c.Get(src, dest)
 		return nil
 	},
 }
@@ -720,7 +713,7 @@ var sshCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return c.ssh(args[1:])
+		return c.Ssh(args[1:])
 	},
 }
 
@@ -735,18 +728,18 @@ var pgurlCmd = &cobra.Command{
 			return err
 		}
 
-		display := fmt.Sprintf("%s: retrieving IP addresses", c.name)
-		nodes := c.serverNodes()
+		display := fmt.Sprintf("%s: retrieving IP addresses", c.Name)
+		nodes := c.ServerNodes()
 		ips := make([]string, len(nodes))
-		c.parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
+		c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
 			var err error
-			ips[i], err = c.getInternalIP(nodes[i])
+			ips[i], err = c.GetInternalIP(nodes[i])
 			return nil, err
 		})
 
 		var urls []string
 		for i, ip := range ips {
-			urls = append(urls, c.impl.nodeURL(c, ip, c.impl.nodePort(c, nodes[i])))
+			urls = append(urls, c.Impl.NodeURL(c, ip, c.Impl.NodePort(c, nodes[i])))
 		}
 		fmt.Println(strings.Join(urls, " "))
 		return nil
@@ -780,7 +773,7 @@ func main() {
 		statusCmd, monitorCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd,
 		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
-		&insecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
+		&ssh.InsecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 
 	for _, cmd := range []*cobra.Command{createCmd, destroyCmd, extendCmd} {
 		cmd.Flags().StringVarP(&username, "username", "u", os.Getenv("ROACHPROD_USER"),
@@ -791,18 +784,18 @@ func main() {
 	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", true, "Use local SSD")
 	createCmd.Flags().StringVar(&createVMOpts.MachineType, "machine-type", "n1-standard-4", "Machine type (see https://cloud.google.com/compute/docs/machine-types)")
 	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 4, "Number of nodes")
-	createCmd.Flags().StringSliceVarP(&zones, "zones", "z", []string{"us-east1-b", "us-west1-b", "europe-west2-b"}, "Zones for cluster")
+	createCmd.Flags().StringSliceVarP(&config.Zones, "zones", "z", []string{"us-east1-b", "us-west1-b", "europe-west2-b"}, "Zones for cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.GeoDistributed, "geo", false, "Create geo-distributed cluster")
 
 	extendCmd.Flags().DurationVarP(&extendLifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 
 	listCmd.Flags().BoolVarP(&listDetails, "details", "d", false, "Show cluster details")
 
-	gcCmd.Flags().StringVar(&gcEmailOpts.From, "email-from", "", "Address of the sender")
-	gcCmd.Flags().StringVar(&gcEmailOpts.Host, "email-host", "", "SMTP host")
-	gcCmd.Flags().IntVar(&gcEmailOpts.Port, "email-port", 587, "SMTP port")
-	gcCmd.Flags().StringVar(&gcEmailOpts.User, "email-user", "", "SMTP user")
-	gcCmd.Flags().StringVar(&gcEmailOpts.Password, "email-password", "", "SMTP password")
+	gcCmd.Flags().StringVar(&config.GCEmailOpts.From, "email-from", "", "Address of the sender")
+	gcCmd.Flags().StringVar(&config.GCEmailOpts.Host, "email-host", "", "SMTP host")
+	gcCmd.Flags().IntVar(&config.GCEmailOpts.Port, "email-port", 587, "SMTP port")
+	gcCmd.Flags().StringVar(&config.GCEmailOpts.User, "email-user", "", "SMTP user")
+	gcCmd.Flags().StringVar(&config.GCEmailOpts.Password, "email-password", "", "SMTP password")
 	gcCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
 	gcCmd.Flags().StringVar(&trackingFile, "tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
 
@@ -810,12 +803,12 @@ func main() {
 		&secure, "secure", false, "use a secure cluster")
 
 	startCmd.Flags().StringVarP(
-		&binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
+		&config.Binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
 	startCmd.Flags().BoolVar(
-		&startOpts.sequential, "sequential", false, "start nodes sequentially so node IDs match hostnames")
+		&install.StartOpts.Sequential, "sequential", false, "start nodes sequentially so node IDs match hostnames")
 
 	testCmd.Flags().StringVarP(
-		&binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
+		&config.Binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
 	testCmd.Flags().DurationVarP(
 		&duration, "duration", "d", 5*time.Minute, "the duration to run each test")
 	testCmd.Flags().StringVarP(
@@ -856,7 +849,7 @@ will perform %[1]s on:
 	}
 
 	var err error
-	osUser, err = user.Current()
+	config.OSUser, err = user.Current()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "unable to lookup current user: %s\n", err)
 		os.Exit(1)

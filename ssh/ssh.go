@@ -1,4 +1,4 @@
-package main
+package ssh
 
 import (
 	"bufio"
@@ -15,6 +15,7 @@ import (
 
 	"github.com/pkg/errors"
 
+	"github.com/cockroachdb/roachprod/config"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -22,12 +23,12 @@ import (
 
 var knownHosts ssh.HostKeyCallback
 var knownHostsOnce sync.Once
-var insecureIgnoreHostKey bool
+var InsecureIgnoreHostKey bool
 
 func getKnownHosts() ssh.HostKeyCallback {
 	knownHostsOnce.Do(func() {
 		var err error
-		if insecureIgnoreHostKey {
+		if InsecureIgnoreHostKey {
 			knownHosts = ssh.InsecureIgnoreHostKey()
 		} else {
 			knownHosts, err = knownhosts.New(filepath.Join(os.Getenv("HOME"), ".ssh", "known_hosts"))
@@ -60,7 +61,7 @@ func getSSHAgentSigners() []ssh.Signer {
 }
 
 func getDefaultSSHKeySigners() []ssh.Signer {
-	path := filepath.Join(osUser.HomeDir, ".ssh", "google_compute_engine")
+	path := filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine")
 	key, err := ioutil.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -112,7 +113,7 @@ var sshState = struct {
 	clients: map[string]*sshClient{},
 }
 
-func newSSHSession(user, host string) (*ssh.Session, error) {
+func NewSSHSession(user, host string) (*ssh.Session, error) {
 	sshState.clientMu.Lock()
 	target := fmt.Sprintf("%s@%s", user, host)
 	client := sshState.clients[target]
@@ -139,7 +140,7 @@ func newSSHSession(user, host string) (*ssh.Session, error) {
 	return client.NewSession()
 }
 
-func isSigKill(err error) bool {
+func IsSigKill(err error) bool {
 	switch t := err.(type) {
 	case *ssh.ExitError:
 		return t.Signal() == string(ssh.SIGKILL)
@@ -163,7 +164,7 @@ func (p *progressWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func scpPut(src, dest string, progress func(float64), session *ssh.Session) error {
+func SCPPut(src, dest string, progress func(float64), session *ssh.Session) error {
 	f, err := os.Open(src)
 	if err != nil {
 		return err
@@ -204,7 +205,7 @@ func scpPut(src, dest string, progress func(float64), session *ssh.Session) erro
 // TODO(benesch): Make progress handling for directories less confusing. The
 // SCP protocol makes this challenging, as it does not send the total size of
 // all files.
-func scpGet(src, dest string, progress func(float64), session *ssh.Session) error {
+func SCPGet(src, dest string, progress func(float64), session *ssh.Session) error {
 	errCh := make(chan error, 1)
 	go func() {
 		rp, err := session.StdoutPipe()
