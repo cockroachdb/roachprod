@@ -248,6 +248,13 @@ done
 `,
 				Cockroach{}.NodePort(c, nodes[i]))
 
+			// Give the session a valid stdin pipe so that nc won't exit immediately.
+			inPipe, err := session.StdinPipe()
+			if err != nil {
+				ch <- nodeMonitorInfo{nodes[i], err.Error()}
+				return
+			}
+			defer inPipe.Close()
 			if err := session.Run(cmd); err != nil {
 				ch <- nodeMonitorInfo{nodes[i], err.Error()}
 				return
