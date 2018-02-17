@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"os/user"
 	"path"
 	"path/filepath"
@@ -43,35 +42,6 @@ var (
 	nodeEnv        = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
 	nodeArgs       []string
 )
-
-func findLocalBinary() error {
-	// For "local" clusters we have to find the binary to run and translate it to
-	// an absolute path. First, look for the binary in PATH.
-	path, err := exec.LookPath(config.Binary)
-	if err != nil {
-		if strings.HasPrefix(config.Binary, "/") {
-			return err
-		}
-		// We're unable to find the binary in PATH and "binary" is a relative path:
-		// look in the cockroach repo.
-		gopath := os.Getenv("GOPATH")
-		if gopath == "" {
-			return err
-		}
-		path = gopath + "/src/github.com/cockroachdb/cockroach/" + config.Binary
-		var err2 error
-		path, err2 = exec.LookPath(path)
-		if err2 != nil {
-			return err
-		}
-	}
-	path, err = filepath.Abs(path)
-	if err != nil {
-		return err
-	}
-	config.Binary = path
-	return nil
-}
 
 // This is a temporary hack to break package dependency cycles.
 // It just calls the "real" ListCloud function and then initializes
@@ -176,12 +146,6 @@ Hint: use "roachprod sync" to update the list of available clusters.
 	c.Secure = secure
 	c.Env = nodeEnv
 	c.Args = nodeArgs
-
-	if c.IsLocal() {
-		if err := findLocalBinary(); err != nil {
-			return nil, err
-		}
-	}
 	return c, nil
 }
 
@@ -300,6 +264,13 @@ var createCmd = &cobra.Command{
 					return err
 				}
 			}
+		} else {
+			for i := 0; i < numNodes; i++ {
+				err := os.MkdirAll(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), i+1), 0755)
+				if err != nil {
+					return err
+				}
+			}
 		}
 
 		return nil
@@ -344,6 +315,12 @@ var destroyCmd = &cobra.Command{
 				return err
 			}
 			c.Wipe()
+			for _, i := range c.Nodes {
+				err := os.RemoveAll(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), i))
+				if err != nil {
+					return err
+				}
+			}
 			if err := os.Remove(filepath.Join(os.ExpandEnv(config.DefaultHostDir), c.Name)); err != nil {
 				return err
 			}

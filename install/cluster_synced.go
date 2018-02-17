@@ -136,7 +136,7 @@ func (c *SyncedCluster) Wipe() {
 			Cockroach{}.NodePort(c, c.Nodes[i]),
 			Cassandra{}.NodePort(c, c.Nodes[i]))
 		if c.IsLocal() {
-			cmd += fmt.Sprintf(`rm -fr ${HOME}/local/cockroach%d ;`, c.Nodes[i])
+			cmd += fmt.Sprintf(`rm -fr ${HOME}/local/%d/data ;`, c.Nodes[i])
 		} else {
 			cmd += `find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; ;
 rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo-data} \; ;
@@ -278,7 +278,12 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		}
 		defer session.Close()
 
-		out, err := session.CombinedOutput(cmd)
+		nodeCmd := cmd
+		if c.IsLocal() {
+			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], cmd)
+		}
+
+		out, err := session.CombinedOutput(nodeCmd)
 		msg := strings.TrimSpace(string(out))
 		if err != nil {
 			errors[i] = err
@@ -443,6 +448,18 @@ func (c *SyncedCluster) Put(src, dest string) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+
+			if c.IsLocal() {
+				from, err := filepath.Abs(src)
+				if err != nil {
+					results <- result{i, err}
+					return
+				}
+				to := fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d/%s"), c.Nodes[i], dest)
+				results <- result{i, os.Symlink(from, to)}
+				return
+			}
+
 			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 			if err == nil {
 				defer session.Close()
@@ -656,6 +673,9 @@ func (c *SyncedCluster) Ssh(args []string) error {
 		fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.host(c.Nodes[0])),
 		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
 		"-o", "StrictHostKeyChecking=no",
+	}
+	if c.IsLocal() {
+		allArgs = append(allArgs, fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0]))
 	}
 
 	// Perform template expansion on the arguments. Currently, we only expand
