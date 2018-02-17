@@ -456,6 +456,9 @@ func (c *SyncedCluster) Put(src, dest string) {
 					return
 				}
 				to := fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d/%s"), c.Nodes[i], dest)
+				// Remove the destination if it exists, ignoring errors which we'll
+				// handle via the os.Symlink() call.
+				_ = os.Remove(to)
 				results <- result{i, os.Symlink(from, to)}
 				return
 			}
