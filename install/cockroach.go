@@ -2,6 +2,9 @@ package install
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -17,14 +20,52 @@ var StartOpts struct {
 
 type Cockroach struct{}
 
-func getCockroachVersion(host, user, binary string) (*version.Version, error) {
+func cockroachNodeBinary(c *SyncedCluster, i int) string {
+	if !c.IsLocal() || filepath.IsAbs(config.Binary) {
+		return config.Binary
+	}
+
+	path := filepath.Join(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), i), config.Binary)
+	if _, err := os.Stat(path); err == nil {
+		return path
+	}
+
+	// For "local" clusters we have to find the binary to run and translate it to
+	// an absolute path. First, look for the binary in PATH.
+	path, err := exec.LookPath(config.Binary)
+	if err != nil {
+		if strings.HasPrefix(config.Binary, "/") {
+			return config.Binary
+		}
+		// We're unable to find the binary in PATH and "binary" is a relative path:
+		// look in the cockroach repo.
+		gopath := os.Getenv("GOPATH")
+		if gopath == "" {
+			return config.Binary
+		}
+		path = gopath + "/src/github.com/cockroachdb/cockroach/" + config.Binary
+		var err2 error
+		path, err2 = exec.LookPath(path)
+		if err2 != nil {
+			return config.Binary
+		}
+	}
+	path, err = filepath.Abs(path)
+	if err != nil {
+		return config.Binary
+	}
+	return path
+}
+
+func getCockroachVersion(c *SyncedCluster, i int, host, user string) (*version.Version, error) {
 	session, err := ssh.NewSSHSession(user, host)
 	if err != nil {
 		return nil, err
 	}
 	defer session.Close()
 
-	out, err := session.CombinedOutput(binary + " version")
+	cmd := cockroachNodeBinary(c, i) + " version"
+	out, err := session.CombinedOutput(cmd)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +95,7 @@ func (r Cockroach) Start(c *SyncedCluster) {
 		host := c.host(nodes[i])
 		user := c.user(nodes[i])
 
-		vers, err := getCockroachVersion(host, user, config.Binary)
+		vers, err := getCockroachVersion(c, nodes[i], host, user)
 		if err != nil {
 			return nil, err
 		}
@@ -76,8 +117,8 @@ func (r Cockroach) Start(c *SyncedCluster) {
 		dir := "/mnt/data1/cockroach"
 		logDir := "${HOME}/logs"
 		if c.IsLocal() {
-			dir = fmt.Sprintf("${HOME}/local/cockroach%d", nodes[i])
-			logDir = fmt.Sprintf("${HOME}/local/cockroach%d/logs", nodes[i])
+			dir = fmt.Sprintf("${HOME}/local/%d/data", nodes[i])
+			logDir = fmt.Sprintf("${HOME}/local/%d/data/logs", nodes[i])
 		}
 		args = append(args, "--store=path="+dir)
 		args = append(args, "--log-dir="+logDir)
@@ -102,8 +143,10 @@ func (r Cockroach) Start(c *SyncedCluster) {
 			args = append(args, fmt.Sprintf("--join=%s:%d", host1, r.NodePort(c, 1)))
 		}
 		args = append(args, c.Args...)
+
+		binary := cockroachNodeBinary(c, nodes[i])
 		cmd := "mkdir -p " + logDir + "; " +
-			c.Env + " " + config.Binary + " start " + strings.Join(args, " ") +
+			c.Env + " " + binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr"
 		return session.CombinedOutput(cmd)
 	})
@@ -128,7 +171,8 @@ func (r Cockroach) Start(c *SyncedCluster) {
 			}
 			defer session.Close()
 
-			cmd := config.Binary + ` sql --url ` + r.NodeURL(c, "localhost", r.NodePort(c, 1)) + ` -e "
+			binary := cockroachNodeBinary(c, 1)
+			cmd := binary + ` sql --url ` + r.NodeURL(c, "localhost", r.NodePort(c, 1)) + ` -e "
 set cluster setting kv.allocator.stat_based_rebalancing.enabled = false;
 set cluster setting server.remote_debugging.mode = 'any';
 "`
