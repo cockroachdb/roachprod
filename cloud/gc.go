@@ -11,7 +11,7 @@ import (
 
 	"github.com/cockroachdb/roachprod/config"
 	"github.com/pkg/errors"
-	gomail "gopkg.in/gomail.v2"
+	"gopkg.in/gomail.v2"
 )
 
 // Tracks all the clusters to notify a user about.
@@ -54,19 +54,13 @@ func GCClusters(cloud *Cloud, filename string, destroyAfter time.Duration) error
 	}
 
 	// Compile list of "bad vms" and destroy them.
-	badVMs := make(JsonVMList, 0)
-	maybeAddVMs := func(l JsonVMList) {
-		for _, v := range l {
-			// We only delete "bad vms" if they were created more than 1h ago.
-			if now.Sub(v.CreationTimestamp) < time.Hour {
-				continue
-			}
-			badVMs = append(badVMs, v)
+	badVMs := make(VMList, 0)
+	for _, vm := range cloud.BadInstances {
+		// We only delete "bad vms" if they were created more than 1h ago.
+		if now.Sub(vm.CreatedAt) >= time.Hour {
+			badVMs = append(badVMs, vm)
 		}
 	}
-	maybeAddVMs(cloud.InvalidName)
-	maybeAddVMs(cloud.NoExpiration)
-	maybeAddVMs(cloud.BadNetwork)
 	if len(badVMs) > 0 {
 		if err := deleteVMs(badVMs.Names(), badVMs.Zones()); err != nil {
 			return errors.Wrapf(err, "failed to delete bad VMs")
