@@ -366,15 +366,10 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
+		// Optionally print any dangling instances with errors
 		if listDetails {
-			if len(cloud.InvalidName) > 0 {
-				fmt.Printf("Bad VM names: %s\n", strings.Join(cloud.InvalidName.Names(), " "))
-			}
-			if len(cloud.NoExpiration) > 0 {
-				fmt.Printf("No expiration: %s\n", strings.Join(cloud.NoExpiration.Names(), " "))
-			}
-			if len(cloud.BadNetwork) > 0 {
-				fmt.Printf("Bad network: %s\n", strings.Join(cloud.BadNetwork.Names(), " "))
+			for err, vmList := range cloud.BadInstanceErrors() {
+				fmt.Printf("%s: %s\n", err, vmList.Names())
 			}
 		}
 

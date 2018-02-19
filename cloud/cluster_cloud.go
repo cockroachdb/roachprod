@@ -3,10 +3,9 @@ package cloud
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
-	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"text/tabwriter"
@@ -16,22 +15,39 @@ import (
 	"github.com/pkg/errors"
 )
 
-const vmNameFormat = "user-<clusterid>-<nodeid>"
-
 type Cloud struct {
 	Clusters map[string]*CloudCluster
-	// Individual "bad" instances by category.
-	InvalidName  JsonVMList
-	NoExpiration JsonVMList
-	BadNetwork   JsonVMList
+	// Any VM in this list can be expected to have at least one element
+	// in its Errors field.
+	BadInstances VMList
+}
+
+// Collate Cloud.BadInstances by errors.
+func (c *Cloud) BadInstanceErrors() map[error]VMList {
+	ret := map[error]VMList{}
+
+	// Expand instances and errors
+	for _, vm := range c.BadInstances {
+		for _, err := range vm.Errors {
+			if _, ok := ret[err]; !ok {
+				ret[err] = make(VMList, 0)
+			}
+			ret[err] = append(ret[err], vm)
+		}
+	}
+
+	// Sort each VMList to make the output prettier
+	for _, v := range ret {
+		sort.Sort(v)
+	}
+
+	return ret
 }
 
 func newCloud() *Cloud {
 	return &Cloud{
 		Clusters:     make(map[string]*CloudCluster),
-		InvalidName:  make(JsonVMList, 0),
-		NoExpiration: make(JsonVMList, 0),
-		BadNetwork:   make(JsonVMList, 0),
+		BadInstances: make(VMList, 0),
 	}
 }
 
@@ -85,42 +101,6 @@ func (c *CloudCluster) IsLocal() bool {
 	return c.Name == config.Local
 }
 
-type VM struct {
-	Name      string
-	CreatedAt time.Time
-	Lifetime  time.Duration
-	PrivateIP string
-	PublicIP  string
-	Zone      string
-}
-
-var regionRE = regexp.MustCompile(`(.*[^-])-?[a-z]$`)
-
-func (vm *VM) Locality() string {
-	var region string
-	if vm.Zone == config.Local {
-		region = config.Local
-	} else if match := regionRE.FindStringSubmatch(vm.Zone); len(match) == 2 {
-		region = match[1]
-	} else {
-		log.Fatalf("unable to parse region from zone %q", vm.Zone)
-	}
-	return fmt.Sprintf("region=%s,zone=%s", region, vm.Zone)
-}
-
-func (vm *VM) dns() string {
-	if vm.Zone == config.Local {
-		return vm.Name
-	}
-	return fmt.Sprintf("%s.%s.%s", vm.Name, vm.Zone, project)
-}
-
-type VMList []VM
-
-func (vl VMList) Len() int           { return len(vl) }
-func (vl VMList) Swap(i, j int)      { vl[i], vl[j] = vl[j], vl[i] }
-func (vl VMList) Less(i, j int) bool { return vl[i].Name < vl[j].Name }
-
 func namesFromVMName(name string) (string, string, error) {
 	parts := strings.Split(name, "-")
 	if len(parts) < 3 {
@@ -143,37 +123,13 @@ func ListCloud() (*Cloud, error) {
 		// Parse cluster/user from VM name.
 		userName, clusterName, err := namesFromVMName(vm.Name)
 		if err != nil {
-			cloud.InvalidName = append(cloud.InvalidName, vm)
-			continue
+			vm.Errors = append(vm.Errors, VMInvalidName)
 		}
 
-		// Check "lifetime" label.
-		lifetimeStr, ok := vm.Labels["lifetime"]
-		if !ok {
-			cloud.NoExpiration = append(cloud.NoExpiration, vm)
-			continue
-		}
-
-		lifetime, err := time.ParseDuration(lifetimeStr)
-		if err != nil {
-			cloud.NoExpiration = append(cloud.NoExpiration, vm)
-			continue
-		}
-		createdAt := vm.CreationTimestamp
-
-		// Check private/public IPs.
-		if len(vm.NetworkInterfaces) == 0 || len(vm.NetworkInterfaces[0].AccessConfigs) == 0 {
-			cloud.BadNetwork = append(cloud.BadNetwork, vm)
-			continue
-		}
-		privateIP := vm.NetworkInterfaces[0].NetworkIP
-		publicIP := vm.NetworkInterfaces[0].AccessConfigs[0].NatIP
-		// This is splitting and taking the last part of a url path,
-		// which is the zone.
-		vmZones := strings.Split(vm.Zone, "/")
-		zone := vmZones[len(vmZones)-1]
-		if len(privateIP) == 0 || len(publicIP) == 0 {
-			cloud.BadNetwork = append(cloud.BadNetwork, vm)
+		// Anything with an error gets tossed into the BadInstances slice, and we'll correct
+		// the problem later on.
+		if len(vm.Errors) > 0 {
+			cloud.BadInstances = append(cloud.BadInstances, vm)
 			continue
 		}
 
@@ -181,26 +137,20 @@ func ListCloud() (*Cloud, error) {
 			cloud.Clusters[clusterName] = &CloudCluster{
 				Name:      clusterName,
 				User:      userName,
-				CreatedAt: createdAt,
-				Lifetime:  lifetime,
+				CreatedAt: vm.CreatedAt,
+				Lifetime:  vm.Lifetime,
 				VMs:       nil,
 			}
 		}
 
+		// Bound the cluster creation time and overall lifetime to the earliest and/or shortest VM
 		c := cloud.Clusters[clusterName]
-		c.VMs = append(c.VMs, VM{
-			Name:      vm.Name,
-			CreatedAt: createdAt,
-			Lifetime:  lifetime,
-			PrivateIP: privateIP,
-			PublicIP:  publicIP,
-			Zone:      zone,
-		})
-		if createdAt.Before(c.CreatedAt) {
-			c.CreatedAt = createdAt
+		c.VMs = append(c.VMs, vm)
+		if vm.CreatedAt.Before(c.CreatedAt) {
+			c.CreatedAt = vm.CreatedAt
 		}
-		if lifetime < c.Lifetime {
-			c.Lifetime = lifetime
+		if vm.Lifetime < c.Lifetime {
+			c.Lifetime = vm.Lifetime
 		}
 	}
 
