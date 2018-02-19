@@ -17,6 +17,7 @@ import (
 	"github.com/cockroachdb/roachprod/config"
 	"github.com/cockroachdb/roachprod/install"
 	"github.com/cockroachdb/roachprod/ssh"
+	"github.com/cockroachdb/roachprod/ui"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
@@ -366,15 +367,19 @@ var listCmd = &cobra.Command{
 			return err
 		}
 
+		// Optionally print any dangling instances with errors
 		if listDetails {
-			if len(cloud.InvalidName) > 0 {
-				fmt.Printf("Bad VM names: %s\n", strings.Join(cloud.InvalidName.Names(), " "))
+			collated := cloud.BadInstanceErrors()
+
+			// Sort by Error() value for stable output
+			var errors ui.ErrorsByError
+			for err := range collated {
+				errors = append(errors, err)
 			}
-			if len(cloud.NoExpiration) > 0 {
-				fmt.Printf("No expiration: %s\n", strings.Join(cloud.NoExpiration.Names(), " "))
-			}
-			if len(cloud.BadNetwork) > 0 {
-				fmt.Printf("Bad network: %s\n", strings.Join(cloud.BadNetwork.Names(), " "))
+			sort.Sort(errors)
+
+			for _, e := range errors {
+				fmt.Printf("%s: %s\n", e, collated[e].Names())
 			}
 		}
 
