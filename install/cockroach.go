@@ -2,6 +2,7 @@ package install
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -172,11 +173,20 @@ func (r Cockroach) Start(c *SyncedCluster) {
 			}
 			defer session.Close()
 
+			license := os.Getenv("COCKROACH_DEV_LICENSE")
+			if license == "" {
+				log.Printf("warning: COCKROACH_DEV_LICENSE unset: enterprise features will be unavailable")
+			}
+
 			binary := cockroachNodeBinary(c, 1)
-			cmd := binary + ` sql --url ` + r.NodeURL(c, "localhost", r.NodePort(c, 1)) + ` -e "
-set cluster setting kv.allocator.stat_based_rebalancing.enabled = false;
-set cluster setting server.remote_debugging.mode = 'any';
-"`
+			cmd := ssh.Escape([]string{
+				binary, "sql", "--url", r.NodeURL(c, "localhost", r.NodePort(c, 1)), "-e",
+				fmt.Sprintf(`
+SET CLUSTER SETTING kv.allocator.stat_based_rebalancing.enabled = false;
+SET CLUSTER SETTING server.remote_debugging.mode = 'any';
+SET CLUSTER SETTING cluster.organization = 'Cockroach Labs - Production Testing';
+SET CLUSTER SETTING enterprise.license = '%s';`, license),
+			})
 			out, err := session.CombinedOutput(cmd)
 			if err != nil {
 				msg = err.Error()
