@@ -3,31 +3,23 @@ package cloud
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
-	"math"
-
 	"github.com/cockroachdb/roachprod/config"
+	"github.com/pkg/errors"
 	"golang.org/x/sync/errgroup"
 )
 
 const (
-	project = "cockroach-ephemeral"
-	domain  = "@cockroachlabs.com"
-	vmUser  = "cockroach"
+	project      = "cockroach-ephemeral"
+	domain       = "@cockroachlabs.com"
+	vmNameFormat = "user-<clusterid>-<nodeid>"
+	vmUser       = "cockroach"
 )
-
-// VMOpts is the set of options when creating VMs.
-type VMOpts struct {
-	UseLocalSSD    bool
-	Lifetime       time.Duration
-	MachineType    string
-	GeoDistributed bool
-}
 
 func runJSONCommand(args []string, parsed interface{}) error {
 	cmd := exec.Command("gcloud", args...)
@@ -44,6 +36,7 @@ func runJSONCommand(args []string, parsed interface{}) error {
 	return nil
 }
 
+// Used to parse the gcloud responses
 type jsonVM struct {
 	Name              string
 	Labels            map[string]string
@@ -58,31 +51,66 @@ type jsonVM struct {
 	Zone string
 }
 
-type JsonVMList []jsonVM
+// Convert the JSON VM data into our common VM type
+func (jsonVM *jsonVM) toVM() *VM {
+	var vmErrors []error
+	var err error
 
-func (vms JsonVMList) Names() []string {
-	ret := make([]string, len(vms))
-	for i, vm := range vms {
-		ret[i] = vm.Name
+	// Check "lifetime" label.
+	var lifetime time.Duration
+	if lifetimeStr, ok := jsonVM.Labels["lifetime"]; ok {
+		if lifetime, err = time.ParseDuration(lifetimeStr); err != nil {
+			vmErrors = append(vmErrors, VMNoExpiration)
+		}
+	} else {
+		vmErrors = append(vmErrors, VMNoExpiration)
 	}
-	return ret
+
+	// Extract network information
+	var publicIP, privateIP string
+	if len(jsonVM.NetworkInterfaces) == 0 {
+		vmErrors = append(vmErrors, VMBadNetwork)
+	} else {
+		privateIP = jsonVM.NetworkInterfaces[0].NetworkIP
+		if len(jsonVM.NetworkInterfaces[0].AccessConfigs) == 0 {
+			vmErrors = append(vmErrors, VMBadNetwork)
+		} else {
+			publicIP = jsonVM.NetworkInterfaces[0].AccessConfigs[0].NatIP
+		}
+	}
+
+	// This is splitting and taking the last part of a url path,
+	// which is the zone.
+	zones := strings.Split(jsonVM.Zone, "/")
+	zone := zones[len(zones)-1]
+
+	return &VM{
+		Name:      jsonVM.Name,
+		CreatedAt: jsonVM.CreationTimestamp,
+		Errors:    vmErrors,
+		Lifetime:  lifetime,
+		PrivateIP: privateIP,
+		PublicIP:  publicIP,
+		Zone:      zone,
+	}
 }
 
-func (vms JsonVMList) Zones() []string {
-	ret := make([]string, len(vms))
-	for i, vm := range vms {
-		ret[i] = vm.Zone
-	}
-	return ret
-}
-
-func listVMs() ([]jsonVM, error) {
+// Query gcloud to produce a list of VM info objects.
+func listVMs() ([]VM, error) {
 	args := []string{"compute", "instances", "list", "--project", project, "--format", "json"}
-	vms := make([]jsonVM, 0)
 
-	if err := runJSONCommand(args, &vms); err != nil {
+	// Run the command, extracting the JSON payload
+	jsonVMS := make([]jsonVM, 0)
+	if err := runJSONCommand(args, &jsonVMS); err != nil {
 		return nil, err
 	}
+
+	// Now, convert the json payload into our common VM type
+	vms := make(VMList, len(jsonVMS))
+	for i, jsonVM := range jsonVMS {
+		vms[i] = *jsonVM.toVM()
+	}
+
 	return vms, nil
 }
 
