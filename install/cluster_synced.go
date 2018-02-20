@@ -112,7 +112,7 @@ func (c *SyncedCluster) Stop() {
 		}
 		defer session.Close()
 
-		cmd := `pkill -9 "cockroach|java|mongo|kv|ycsb" || true ;
+		cmd := `pkill -9 "^(cockroach|java|mongo|kv|ycsb)$" || true ;
 `
 		cmd += fmt.Sprintf("kill -9 $(lsof -t -i :%d -i :%d) 2>/dev/null || true ;\n",
 			Cockroach{}.NodePort(c, c.Nodes[i]),
