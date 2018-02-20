@@ -668,7 +668,7 @@ func (c *SyncedCluster) pgurls(nodes []int) map[int]string {
 
 func (c *SyncedCluster) Ssh(args []string) error {
 	if len(c.Nodes) != 1 {
-		return fmt.Errorf("invalid number of nodes for ssh: %d", c.Nodes)
+		return fmt.Errorf("invalid number of nodes for ssh: %d", len(c.Nodes))
 	}
 
 	allArgs := []string{

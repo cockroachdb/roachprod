@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cockroachdb/roachprod/cloud"
@@ -208,4 +209,57 @@ func (Cockroach) NodePort(c *SyncedCluster, index int) int {
 		port += (index - 1) * 2
 	}
 	return port
+}
+
+func (Cockroach) SQL(c *SyncedCluster, args []string) error {
+	url := Cockroach{}.NodeURL(c, "localhost", Cockroach{}.NodePort(c, 0))
+	allArgs := []string{"./cockroach", "sql", "--url", url}
+	allArgs = append(allArgs, args...)
+	if len(args) == 0 {
+		// If no arguments, we're going to get an interactive SQL shell. Require
+		// exactly one target and ask SSH to provide a psuedoterminal.
+		if len(c.Nodes) != 1 {
+			return fmt.Errorf("invalid number of nodes for interactive sql: %d", len(c.Nodes))
+		}
+		return c.Ssh(append([]string{"-t"}, allArgs...))
+	}
+
+	// Otherwise, assume the user provided the "-e" flag, so we can reasonably
+	// execute the query on all specified nodes.
+	type result struct {
+		node   int
+		output string
+	}
+	resultChan := make(chan result, len(c.Nodes))
+
+	display := fmt.Sprintf("%s: executing sql", c.Name)
+	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
+		if err != nil {
+			return nil, err
+		}
+		defer session.Close()
+
+		out, err := session.CombinedOutput(ssh.Escape(allArgs))
+		if err != nil {
+			resultChan <- result{node: c.Nodes[i], output: fmt.Sprintf("err=%s,out=%s", err, out)}
+			return out, err
+		}
+
+		resultChan <- result{node: c.Nodes[i], output: string(out)}
+		return nil, nil
+	})
+
+	results := make([]result, 0, len(c.Nodes))
+	for _ = range c.Nodes {
+		results = append(results, <-resultChan)
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].node < results[j].node
+	})
+	for _, r := range results {
+		fmt.Printf("node %d:\n%s", r.node, r.output)
+	}
+
+	return nil
 }
