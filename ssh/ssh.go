@@ -60,8 +60,7 @@ func getSSHAgentSigners() []ssh.Signer {
 	return signers
 }
 
-func getDefaultSSHKeySigners() []ssh.Signer {
-	path := filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine")
+func getSSHKeySigner(path string) ssh.Signer {
 	key, err := ioutil.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -75,7 +74,14 @@ func getDefaultSSHKeySigners() []ssh.Signer {
 		log.Printf("unable to parse SSH key %q: %s", path, err)
 		return nil
 	}
-	return []ssh.Signer{signer}
+	return signer
+}
+
+func getDefaultSSHKeySigners() []ssh.Signer {
+	return []ssh.Signer{
+		getSSHKeySigner(filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa")),
+		getSSHKeySigner(filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine")),
+	}
 }
 
 func newSSHClient(user, host string) (*ssh.Client, net.Conn, error) {
