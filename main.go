@@ -695,7 +695,27 @@ var sshCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
+
 		return c.Ssh(args[1:])
+	},
+}
+
+var sqlCmd = &cobra.Command{
+	Use:          "sql <cluster> [args]",
+	Short:        "run `cockroach sql` on a remote cluster",
+	Long:         "Run `cockroach sql` on a remote cluster.",
+	Args:         cobra.MinimumNArgs(1),
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := newCluster(args[0], false /* reserveLoadGen */)
+		if err != nil {
+			return err
+		}
+		cockroach, ok := c.Impl.(install.Cockroach)
+		if !ok {
+			return errors.New("sql is only valid on cockroach clusters")
+		}
+		return cockroach.SQL(c, args[1:])
 	},
 }
 
@@ -753,7 +773,7 @@ func main() {
 
 	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
 		statusCmd, monitorCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd,
-		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, webCmd, dumpCmd)
+		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, sqlCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
 		&ssh.InsecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 
@@ -797,7 +817,8 @@ func main() {
 		&concurrency, "concurrency", "c", "1-64", "the concurrency to run each test")
 
 	for _, cmd := range []*cobra.Command{
-		getCmd, putCmd, runCmd, startCmd, statusCmd, stopCmd, testCmd, wipeCmd, pgurlCmd, installCmd,
+		getCmd, putCmd, runCmd, startCmd, statusCmd, stopCmd, testCmd, wipeCmd, pgurlCmd, sqlCmd,
+		installCmd,
 	} {
 		cmd.Flags().BoolVar(
 			&secure, "secure", false, "use a secure cluster")
