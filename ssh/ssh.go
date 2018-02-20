@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,17 +72,26 @@ func getSSHKeySigner(path string) ssh.Signer {
 
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
-		log.Printf("unable to parse SSH key %q: %s", path, err)
+		if strings.Contains(err.Error(), "cannot decode encrypted private key") {
+			log.Printf(
+				"skipping encrypted SSH key %q; if necessary, add the key to your SSH agent", path)
+		} else {
+			log.Printf("unable to parse SSH key %q: %s", path, err)
+		}
 		return nil
 	}
 	return signer
 }
 
 func getDefaultSSHKeySigners() []ssh.Signer {
-	return []ssh.Signer{
-		getSSHKeySigner(filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa")),
-		getSSHKeySigner(filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine")),
+	var signers []ssh.Signer
+	for _, name := range []string{"id_rsa", "google_compute_engine"} {
+		s := getSSHKeySigner(filepath.Join(config.OSUser.HomeDir, ".ssh", name))
+		if s != nil {
+			signers = append(signers, s)
+		}
 	}
+	return signers
 }
 
 func newSSHClient(user, host string) (*ssh.Client, net.Conn, error) {
