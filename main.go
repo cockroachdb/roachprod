@@ -42,6 +42,7 @@ var (
 	secure         = false
 	nodeEnv        = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
 	nodeArgs       []string
+	external       = false
 )
 
 // This is a temporary hack to break package dependency cycles.
@@ -729,15 +730,21 @@ var pgurlCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
-		display := fmt.Sprintf("%s: retrieving IP addresses", c.Name)
 		nodes := c.ServerNodes()
 		ips := make([]string, len(nodes))
-		c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
-			var err error
-			ips[i], err = c.GetInternalIP(nodes[i])
-			return nil, err
-		})
+
+		if external {
+			for i := 0; i < len(nodes); i++ {
+				ips[i] = c.VMs[nodes[i]-1]
+			}
+		} else {
+			display := fmt.Sprintf("%s: retrieving IP addresses", c.Name)
+			c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
+				var err error
+				ips[i], err = c.GetInternalIP(nodes[i])
+				return nil, err
+			})
+		}
 
 		var urls []string
 		for i, ip := range ips {
@@ -800,6 +807,9 @@ func main() {
 	gcCmd.Flags().StringVar(&config.GCEmailOpts.Password, "email-password", "", "SMTP password")
 	gcCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
 	gcCmd.Flags().StringVar(&trackingFile, "tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
+
+	pgurlCmd.Flags().BoolVar(
+		&external, "external", false, "return pgurls for external connections")
 
 	sshCmd.Flags().BoolVar(
 		&secure, "secure", false, "use a secure cluster")

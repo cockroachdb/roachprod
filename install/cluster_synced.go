@@ -79,7 +79,7 @@ func (c *SyncedCluster) ServerNodes() []int {
 	return newNodes
 }
 
-// getInternalIP returns the internal IP address of the specified node.
+// GetInternalIP returns the internal IP address of the specified node.
 func (c *SyncedCluster) GetInternalIP(index int) (string, error) {
 	if c.IsLocal() {
 		return c.host(index), nil
