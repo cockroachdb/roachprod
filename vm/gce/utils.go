@@ -1,9 +1,7 @@
-package cloud
+package gce
 
 import (
 	"io/ioutil"
-
-	version "github.com/hashicorp/go-version"
 )
 
 // Startup script used to find/format/mount all local SSDs in GCE.
@@ -49,12 +47,4 @@ func writeStartupScript() (string, error) {
 		return "", err
 	}
 	return tmpfile.Name(), nil
-}
-
-func VersionSatifies(v *version.Version, constraintString string) bool {
-	constraints, err := version.NewConstraint(constraintString)
-	if err != nil {
-		panic(err)
-	}
-	return constraints.Check(v)
 }

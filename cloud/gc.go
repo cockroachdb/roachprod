@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/roachprod/config"
+	"github.com/cockroachdb/roachprod/vm"
 	"github.com/pkg/errors"
 	"gopkg.in/gomail.v2"
 )
@@ -54,7 +55,7 @@ func GCClusters(cloud *Cloud, filename string, destroyAfter time.Duration) error
 	}
 
 	// Compile list of "bad vms" and destroy them.
-	badVMs := make(VMList, 0)
+	badVMs := make(vm.List, 0)
 	for _, vm := range cloud.BadInstances {
 		// We only delete "bad vms" if they were created more than 1h ago.
 		if now.Sub(vm.CreatedAt) >= time.Hour {
@@ -62,7 +63,10 @@ func GCClusters(cloud *Cloud, filename string, destroyAfter time.Duration) error
 		}
 	}
 	if len(badVMs) > 0 {
-		if err := deleteVMs(badVMs.Names(), badVMs.Zones()); err != nil {
+		err := vm.FanOut(badVMs, func(p vm.Provider, vms vm.List) error {
+			return p.Delete(vms)
+		})
+		if err != nil {
 			return errors.Wrapf(err, "failed to delete bad VMs")
 		}
 	}
@@ -223,7 +227,7 @@ func buildEmail(actions *userNotification) *gomail.Message {
 
 	m := gomail.NewMessage()
 	m.SetHeader("From", config.GCEmailOpts.From)
-	m.SetHeader("To", fmt.Sprintf("%s%s", actions.Username, domain))
+	m.SetHeader("To", fmt.Sprintf("%s%s", actions.Username, config.EmailDomain))
 	m.SetHeader("Subject", time.Now().Format("Roachprod clusters 2006-01-02"))
 	m.SetBody("text/html", buf.String())
 
