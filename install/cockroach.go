@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cockroachdb/roachprod/cloud"
 	"github.com/cockroachdb/roachprod/config"
 	"github.com/cockroachdb/roachprod/ssh"
 	"github.com/hashicorp/go-version"
@@ -125,7 +124,7 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 		args = append(args, "--store=path="+dir)
 		args = append(args, "--log-dir="+logDir)
 		args = append(args, "--background")
-		if cloud.VersionSatifies(vers, ">=1.1") {
+		if VersionSatifies(vers, ">=1.1") {
 			cache := 25
 			if c.IsLocal() {
 				cache /= len(nodes)

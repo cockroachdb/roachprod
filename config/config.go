@@ -9,7 +9,6 @@ var (
 	Binary      = "./cockroach"
 	GCEmailOpts EmailOpts
 	OSUser      *user.User
-	Zones       []string
 )
 
 func init() {
@@ -33,6 +32,7 @@ type EmailOpts struct {
 // take place on the local machine.  Later in the refactoring,
 // this ought to be replaced by a LocalCloudProvider or somesuch.
 const (
-	Local          = "local"
 	DefaultHostDir = "${HOME}/.roachprod/hosts"
+	EmailDomain    = "@cockroachlabs.com"
+	Local          = "local"
 )
