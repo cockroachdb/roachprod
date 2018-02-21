@@ -84,6 +84,10 @@ func getCockroachVersion(c *SyncedCluster, i int, host, user string) (*version.V
 	return version, nil
 }
 
+func GetAdminUIPort(connPort int) int {
+	return connPort + 1
+}
+
 func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 	display := fmt.Sprintf("%s: starting", c.Name)
 	host1 := c.host(1)
@@ -137,7 +141,7 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 			args = append(args, fmt.Sprintf("--max-sql-memory=%d%%", cache))
 		}
 		args = append(args, fmt.Sprintf("--port=%d", port))
-		args = append(args, fmt.Sprintf("--http-port=%d", port+1))
+		args = append(args, fmt.Sprintf("--http-port=%d", GetAdminUIPort(port)))
 		if locality := c.locality(nodes[i]); locality != "" {
 			args = append(args, "--locality="+locality)
 		}
