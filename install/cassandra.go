@@ -3,17 +3,18 @@ package install
 import (
 	"bufio"
 	"fmt"
-	"github.com/cockroachdb/roachprod/ssh"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"os"
 	"time"
+
+	"github.com/cockroachdb/roachprod/ssh"
 )
 
 type Cassandra struct{}
 
-func (Cassandra) Start(c *SyncedCluster) {
+func (Cassandra) Start(c *SyncedCluster, extraArgs []string) {
 	yamlPath, err := makeCassandraYAML(c)
 	if err != nil {
 		log.Fatal(err)
@@ -68,6 +69,15 @@ func (Cassandra) Start(c *SyncedCluster) {
 		}
 		return nil, nil
 	})
+}
+
+func (Cassandra) NodeDir(c *SyncedCluster, index int) string {
+	if c.IsLocal() {
+		// TODO(peter): This will require a bit of work to adjust paths in
+		// cassandra.yaml.
+		panic("Cassandra.NodeDir unimplemented")
+	}
+	return "/mnt/data1/cassandra"
 }
 
 func (Cassandra) NodeURL(_ *SyncedCluster, host string, port int) string {
