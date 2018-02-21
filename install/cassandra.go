@@ -34,7 +34,7 @@ func (Cassandra) Start(c *SyncedCluster) {
 			}
 			defer session.Close()
 
-			cmd := c.Env + ` cassandra` +
+			cmd := c.Env + `env ROACHPROD=true cassandra` +
 				` -Dcassandra.config=file://${PWD}/cassandra.yaml` +
 				` -Dcassandra.ring_delay_ms=3000` +
 				` > cassandra.stdout 2> cassandra.stderr`

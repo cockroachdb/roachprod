@@ -148,7 +148,7 @@ func (r Cockroach) Start(c *SyncedCluster) {
 
 		binary := cockroachNodeBinary(c, nodes[i])
 		cmd := "mkdir -p " + logDir + "; " +
-			c.Env + " " + binary + " start " + strings.Join(args, " ") +
+			c.Env + " ROACHPROD=true " + binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr"
 		return session.CombinedOutput(cmd)
 	})
