@@ -11,7 +11,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -25,7 +24,8 @@ import (
 )
 
 type ClusterImpl interface {
-	Start(c *SyncedCluster)
+	Start(c *SyncedCluster, extraArgs []string)
+	NodeDir(c *SyncedCluster, index int) string
 	NodeURL(c *SyncedCluster, host string, port int) string
 	NodePort(c *SyncedCluster, index int) int
 }
@@ -100,7 +100,13 @@ func (c *SyncedCluster) GetInternalIP(index int) (string, error) {
 }
 
 func (c *SyncedCluster) Start() {
-	c.Impl.Start(c)
+	var e expander
+	var args []string
+	for _, arg := range c.Args {
+		arg = e.expand(c, arg)
+		args = append(args, strings.Split(arg, " ")...)
+	}
+	c.Impl.Start(c, args)
 }
 
 func (c *SyncedCluster) Stop() {
@@ -648,9 +654,6 @@ func (c *SyncedCluster) Get(src, dest string) {
 	}
 }
 
-var parameterRe = regexp.MustCompile(`{[^}]*}`)
-var pgurlRe = regexp.MustCompile(`{pgurl(:[-0-9]+)?}`)
-
 func (c *SyncedCluster) pgurls(nodes []int) map[int]string {
 	ips := make([]string, len(nodes))
 	c.Parallel("", len(nodes), 0, func(i int) ([]byte, error) {
@@ -681,40 +684,10 @@ func (c *SyncedCluster) Ssh(args []string) error {
 		allArgs = append(allArgs, fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0]))
 	}
 
-	// Perform template expansion on the arguments. Currently, we only expand
-	// "{pgurl:x}" templates, though additional expansions could be added.
-	var urls map[int]string
+	// Perform template expansion on the arguments.
+	var e expander
 	for _, arg := range args {
-		arg := parameterRe.ReplaceAllStringFunc(arg, func(s string) string {
-			m := pgurlRe.FindStringSubmatch(s)
-			if m == nil {
-				return s
-			}
-
-			if m[1] == "" {
-				m[1] = "all"
-			} else {
-				m[1] = m[1][1:]
-			}
-
-			if urls == nil {
-				urls = c.pgurls(allNodes(len(c.VMs)))
-			}
-
-			nodes, err := ListNodes(m[1], len(c.VMs))
-			if err != nil {
-				return err.Error()
-			}
-
-			var result []string
-			for _, i := range nodes {
-				if url, ok := urls[i]; ok {
-					result = append(result, url)
-				}
-			}
-			return strings.Join(result, " ")
-		})
-
+		arg = e.expand(c, arg)
 		allArgs = append(allArgs, strings.Split(arg, " ")...)
 	}
 

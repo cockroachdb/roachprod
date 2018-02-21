@@ -84,7 +84,7 @@ func getCockroachVersion(c *SyncedCluster, i int, host, user string) (*version.V
 	return version, nil
 }
 
-func (r Cockroach) Start(c *SyncedCluster) {
+func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 	display := fmt.Sprintf("%s: starting", c.Name)
 	host1 := c.host(1)
 	nodes := c.ServerNodes()
@@ -144,7 +144,7 @@ func (r Cockroach) Start(c *SyncedCluster) {
 		if nodes[i] != 1 {
 			args = append(args, fmt.Sprintf("--join=%s:%d", host1, r.NodePort(c, 1)))
 		}
-		args = append(args, c.Args...)
+		args = append(args, extraArgs...)
 
 		binary := cockroachNodeBinary(c, nodes[i])
 		cmd := "mkdir -p " + logDir + "; " +
@@ -198,6 +198,13 @@ SET CLUSTER SETTING enterprise.license = '%s';`, license),
 
 		fmt.Println(msg)
 	}
+}
+
+func (Cockroach) NodeDir(c *SyncedCluster, index int) string {
+	if c.IsLocal() {
+		return os.ExpandEnv(fmt.Sprintf("${HOME}/local/%d/data", index))
+	}
+	return "/mnt/data1/cockroach"
 }
 
 func (Cockroach) NodeURL(c *SyncedCluster, host string, port int) string {
