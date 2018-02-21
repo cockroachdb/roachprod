@@ -111,18 +111,15 @@ func (c *SyncedCluster) Stop() {
 			return nil, err
 		}
 		defer session.Close()
-
-		cmd := `pkill -9 "cockroach|java|mongo|kv|ycsb" || true ;
-`
-		cmd += fmt.Sprintf("kill -9 $(lsof -t -i :%d -i :%d) 2>/dev/null || true ;\n",
-			Cockroach{}.NodePort(c, c.Nodes[i]),
-			Cassandra{}.NodePort(c, c.Nodes[i]))
+		// NB: xargs --no-run-if-empty is not supported on OSX.
+		cmd := "ps axeww -o pid -o command | grep -E 'ROACHPROD=[a-z]+' | awk '{ print $1 }' | xargs kill -9 || true;"
 		return session.CombinedOutput(cmd)
 	})
 }
 
 func (c *SyncedCluster) Wipe() {
 	display := fmt.Sprintf("%s: wiping", c.Name)
+	c.Stop()
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
 		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 		if err != nil {
@@ -130,15 +127,11 @@ func (c *SyncedCluster) Wipe() {
 		}
 		defer session.Close()
 
-		cmd := `pkill -9 "cockroach|java|mongo|kv|ycsb" || true ;
-`
-		cmd += fmt.Sprintf("kill -9 $(lsof -t -i :%d -i :%d) 2>/dev/null || true ;\n",
-			Cockroach{}.NodePort(c, c.Nodes[i]),
-			Cassandra{}.NodePort(c, c.Nodes[i]))
+		var cmd string
 		if c.IsLocal() {
-			cmd += fmt.Sprintf(`rm -fr ${HOME}/local/%d/data ;`, c.Nodes[i])
+			cmd = fmt.Sprintf(`rm -fr ${HOME}/local/%d/data ;`, c.Nodes[i])
 		} else {
-			cmd += `find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; ;
+			cmd = `find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; ;
 rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo-data} \; ;
 `
 		}
@@ -278,7 +271,7 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		}
 		defer session.Close()
 
-		nodeCmd := cmd
+		nodeCmd := "env ROACHROD=true " + cmd
 		if c.IsLocal() {
 			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], cmd)
 		}
@@ -417,7 +410,7 @@ func (c *SyncedCluster) RunLoad(cmd string, stdout, stderr io.Writer) error {
 	for i, ip := range ips {
 		urls = append(urls, c.Impl.NodeURL(c, ip, c.Impl.NodePort(c, nodes[i])))
 	}
-	return session.Run("ulimit -n 16384; " + cmd + " " + strings.Join(urls, " "))
+	return session.Run("ulimit -n 16384; env ROACHPROD=true " + cmd + " " + strings.Join(urls, " "))
 }
 
 const progressDone = "=======================================>"
@@ -675,7 +668,7 @@ func (c *SyncedCluster) Ssh(args []string) error {
 		"ssh",
 		fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.host(c.Nodes[0])),
 		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
-		"-o", "StrictHostKeyChecking=no",
+		"-o", "StrictHostKeyChecking=no", "env", "ROACHPROD=true",
 	}
 	if c.IsLocal() {
 		allArgs = append(allArgs, fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0]))
