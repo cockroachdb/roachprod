@@ -748,6 +748,26 @@ var pgurlCmd = &cobra.Command{
 	},
 }
 
+var adminurlCmd = &cobra.Command{
+	Use:   "adminurl <cluster>",
+	Short: "generate admin UI URLs for the nodes in a cluster\n",
+	Long:  `Generate admin UI URLs for the nodes in a cluster.`,
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		c, err := newCluster(args[0], false /* reserveLoadGen */)
+		if err != nil {
+			return err
+		}
+
+		for _, node := range c.ServerNodes() {
+			ip := c.VMs[node-1]
+			port := install.GetAdminUIPort(c.Impl.NodePort(c, node))
+			fmt.Printf("http://%s:%d/\n", ip, port)
+		}
+		return nil
+	},
+}
+
 var webCmd = &cobra.Command{
 	Use:   "web <testdir> [<testdir>]",
 	Short: "visualize and compare test output",
@@ -773,7 +793,7 @@ func main() {
 
 	rootCmd.AddCommand(createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
 		statusCmd, monitorCmd, startCmd, stopCmd, runCmd, wipeCmd, testCmd,
-		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, sqlCmd, webCmd, dumpCmd)
+		installCmd, putCmd, getCmd, sshCmd, pgurlCmd, adminurlCmd, sqlCmd, webCmd, dumpCmd)
 	rootCmd.Flags().BoolVar(
 		&ssh.InsecureIgnoreHostKey, "insecure-ignore-host-key", true, "don't check ssh host keys")
 
