@@ -18,6 +18,9 @@ import (
 	"github.com/cockroachdb/roachprod/install"
 	"github.com/cockroachdb/roachprod/ssh"
 	"github.com/cockroachdb/roachprod/ui"
+	"github.com/cockroachdb/roachprod/vm"
+	"github.com/cockroachdb/roachprod/vm/gce"
+	"github.com/cockroachdb/roachprod/vm/local"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
@@ -44,46 +47,6 @@ var (
 	nodeArgs       []string
 	external       = false
 )
-
-// This is a temporary hack to break package dependency cycles.
-// It just calls the "real" ListCloud function and then initializes
-// the local cluster.  In a follow-on patch, the local cluster
-// will be just another type of CloudProvider, so we'll be able to
-// get rid of this hack.
-func listCloudAndLocal() (*cld.Cloud, error) {
-	cloud, err := cld.ListCloud()
-	if err != nil {
-		return nil, err
-	}
-
-	// Initialize the local cluster (if it exists)
-	if sc, ok := install.Clusters[config.Local]; ok {
-		c := &cld.CloudCluster{
-			Name:      config.Local,
-			User:      config.OSUser.Username,
-			CreatedAt: time.Now(),
-			Lifetime:  time.Hour,
-		}
-		cloud.Clusters[config.Local] = c
-
-		for range sc.VMs {
-			c.VMs = append(c.VMs, cld.VM{
-				Name:      "localhost",
-				CreatedAt: c.CreatedAt,
-				Lifetime:  time.Hour,
-				PrivateIP: "127.0.0.1",
-				PublicIP:  "127.0.0.1",
-				Zone:      config.Local,
-			})
-		}
-	}
-
-	// Sort VMs for each cluster. We want to make sure we always have the same order.
-	for _, c := range cloud.Clusters {
-		sort.Sort(c.VMs)
-	}
-	return cloud, nil
-}
 
 func sortedClusters() []string {
 	var r []string
@@ -162,7 +125,7 @@ func verifyClusterName(clusterName string) (string, error) {
 	account := username
 	if len(username) == 0 {
 		var err error
-		account, err = cld.FindActiveAccount()
+		account, err = vm.FindActiveAccount()
 		if err != nil {
 			return "", err
 		}
@@ -189,7 +152,7 @@ func verifyClusterName(clusterName string) (string, error) {
 	return clusterName, nil
 }
 
-var createVMOpts cld.VMOpts
+var createVMOpts vm.CreateOpts
 
 var createCmd = &cobra.Command{
 	Use:          "create <cluster id>",
@@ -213,7 +176,7 @@ var createCmd = &cobra.Command{
 		fmt.Printf("Creating cluster %s with %d nodes\n", clusterName, numNodes)
 
 		if clusterName != config.Local {
-			cloud, err := listCloudAndLocal()
+			cloud, err := cld.ListCloud()
 			if err != nil {
 				return err
 			}
@@ -224,6 +187,9 @@ var createCmd = &cobra.Command{
 			if _, ok := install.Clusters[clusterName]; ok {
 				return fmt.Errorf("cluster %s already exists", clusterName)
 			}
+
+			// If the local cluster is being created, force the local Provider to be used
+			createVMOpts.VMProviders = []string{local.ProviderName}
 		}
 
 		if err := cld.CreateCluster(clusterName, numNodes, createVMOpts); err != nil {
@@ -234,7 +200,7 @@ var createCmd = &cobra.Command{
 
 		if clusterName != config.Local {
 			{
-				cloud, err := listCloudAndLocal()
+				cloud, err := cld.ListCloud()
 				if err != nil {
 					return err
 				}
@@ -294,7 +260,7 @@ var destroyCmd = &cobra.Command{
 		}
 
 		if clusterName != config.Local {
-			cloud, err := listCloudAndLocal()
+			cloud, err := cld.ListCloud()
 			if err != nil {
 				return err
 			}
@@ -338,20 +304,28 @@ var listCmd = &cobra.Command{
 	Short: "retrieve the list of clusters",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		account, err := cld.FindActiveAccount()
+		account, err := vm.FindActiveAccount()
 		if err != nil {
 			return err
 		}
 		fmt.Printf("Account: %s\n", account)
 
-		cloud, err := listCloudAndLocal()
+		cloud, err := cld.ListCloud()
 		if err != nil {
 			return err
 		}
 
+		// Sort by cluster names for stable output
+		var names []string
+		for name, _ := range cloud.Clusters {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+
 		// Align columns left and separate with at least two spaces.
 		tw := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
-		for _, c := range cloud.Clusters {
+		for _, name := range names {
+			c := cloud.Clusters[name]
 			if listDetails {
 				c.PrintDetails()
 			} else {
@@ -393,7 +367,7 @@ var syncCmd = &cobra.Command{
 	Short: "sync ssh keys/config and hosts files",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cloud, err := listCloudAndLocal()
+		cloud, err := cld.ListCloud()
 		if err != nil {
 			return err
 		}
@@ -423,7 +397,10 @@ func syncAll(cloud *cld.Cloud) error {
 	if err := syncHosts(cloud); err != nil {
 		return err
 	}
-	if err := cld.CleanSSH(); err != nil {
+	err = vm.EachProvider(func(p vm.Provider) error {
+		return p.CleanSSH()
+	})
+	if err != nil {
 		return err
 	}
 
@@ -439,7 +416,9 @@ func syncAll(cloud *cld.Cloud) error {
 		}
 		rootCmd.GenBashCompletionFile(bashCompletion)
 	}
-	return cld.ConfigSSH()
+	return vm.EachProvider(func(p vm.Provider) error {
+		return p.ConfigSSH()
+	})
 }
 
 var gcCmd = &cobra.Command{
@@ -447,7 +426,7 @@ var gcCmd = &cobra.Command{
 	Short: "GC expired clusters; sends email if properly configured\n",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cloud, err := listCloudAndLocal()
+		cloud, err := cld.ListCloud()
 		if err != nil {
 			return err
 		}
@@ -470,7 +449,7 @@ var extendCmd = &cobra.Command{
 			return err
 		}
 
-		cloud, err := listCloudAndLocal()
+		cloud, err := cld.ListCloud()
 		if err != nil {
 			return err
 		}
@@ -485,7 +464,7 @@ var extendCmd = &cobra.Command{
 		}
 
 		// Reload the clusters and print details.
-		cloud, err = listCloudAndLocal()
+		cloud, err = cld.ListCloud()
 		if err != nil {
 			return err
 		}
@@ -791,10 +770,13 @@ func main() {
 
 	createCmd.Flags().DurationVarP(&createVMOpts.Lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", true, "Use local SSD")
-	createCmd.Flags().StringVar(&createVMOpts.MachineType, "machine-type", "n1-standard-4", "Machine type (see https://cloud.google.com/compute/docs/machine-types)")
-	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 4, "Number of nodes")
-	createCmd.Flags().StringSliceVarP(&config.Zones, "zones", "z", []string{"us-east1-b", "us-west1-b", "europe-west2-b"}, "Zones for cluster")
+	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 4, "Total number of nodes, distributed across all clouds")
+	createCmd.Flags().StringSliceVarP(&createVMOpts.VMProviders, "clouds", "c", []string{gce.ProviderName}, "The cloud provider(s) to use when creating new vm instances")
 	createCmd.Flags().BoolVar(&createVMOpts.GeoDistributed, "geo", false, "Create geo-distributed cluster")
+	// Allow each Provider to inject additional configuration flags
+	for _, p := range vm.Providers {
+		p.Flags().CreateFlags(createCmd.Flags())
+	}
 
 	extendCmd.Flags().DurationVarP(&extendLifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 
