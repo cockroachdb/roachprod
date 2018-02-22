@@ -61,7 +61,7 @@ func getSSHAgentSigners() []ssh.Signer {
 	return signers
 }
 
-func getSSHKeySigner(path string) ssh.Signer {
+func getSSHKeySigner(path string, haveAgent bool) ssh.Signer {
 	key, err := ioutil.ReadFile(path)
 	if err != nil {
 		if !os.IsNotExist(err) {
@@ -73,8 +73,10 @@ func getSSHKeySigner(path string) ssh.Signer {
 	signer, err := ssh.ParsePrivateKey(key)
 	if err != nil {
 		if strings.Contains(err.Error(), "cannot decode encrypted private key") {
-			log.Printf(
-				"skipping encrypted SSH key %q; if necessary, add the key to your SSH agent", path)
+			if !haveAgent {
+				log.Printf(
+					"skipping encrypted SSH key %q; if necessary, add the key to your SSH agent", path)
+			}
 		} else {
 			log.Printf("unable to parse SSH key %q: %s", path, err)
 		}
@@ -83,10 +85,10 @@ func getSSHKeySigner(path string) ssh.Signer {
 	return signer
 }
 
-func getDefaultSSHKeySigners() []ssh.Signer {
+func getDefaultSSHKeySigners(haveAgent bool) []ssh.Signer {
 	var signers []ssh.Signer
 	for _, name := range []string{"id_rsa", "google_compute_engine"} {
-		s := getSSHKeySigner(filepath.Join(config.OSUser.HomeDir, ".ssh", name))
+		s := getSSHKeySigner(filepath.Join(config.OSUser.HomeDir, ".ssh", name), haveAgent)
 		if s != nil {
 			signers = append(signers, s)
 		}
@@ -141,7 +143,8 @@ func NewSSHSession(user, host string) (*ssh.Session, error) {
 
 	sshState.signersInit.Do(func() {
 		sshState.signers = append(sshState.signers, getSSHAgentSigners()...)
-		sshState.signers = append(sshState.signers, getDefaultSSHKeySigners()...)
+		haveAgentSigner := len(sshState.signers) > 0
+		sshState.signers = append(sshState.signers, getDefaultSSHKeySigners(haveAgentSigner)...)
 	})
 
 	client.Lock()
