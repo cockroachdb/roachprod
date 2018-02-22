@@ -150,6 +150,9 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 		args = append(args, extraArgs...)
 
 		binary := cockroachNodeBinary(c, nodes[i])
+		// NB: this is awkward as when the process fails, the test runner will show an
+		// unhelpful empty error (since everything has been redirected away). This is
+		// unfortunately equally awkward to address.
 		cmd := "mkdir -p " + logDir + "; " +
 			c.Env + " ROACHPROD=true " + binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr"
