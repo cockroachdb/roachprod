@@ -3,6 +3,7 @@ package install
 import (
 	"bytes"
 	"fmt"
+
 	"github.com/hashicorp/go-version"
 )
 
