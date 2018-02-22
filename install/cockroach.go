@@ -122,7 +122,7 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 		logDir := "${HOME}/logs"
 		if c.IsLocal() {
 			dir = fmt.Sprintf("${HOME}/local/%d/data", nodes[i])
-			logDir = fmt.Sprintf("${HOME}/local/%d/data/logs", nodes[i])
+			logDir = fmt.Sprintf("${HOME}/local/%d/logs", nodes[i])
 		}
 		args = append(args, "--store=path="+dir)
 		args = append(args, "--log-dir="+logDir)
