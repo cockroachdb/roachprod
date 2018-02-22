@@ -664,7 +664,7 @@ func (c *SyncedCluster) pgurls(nodes []int) map[int]string {
 	return m
 }
 
-func (c *SyncedCluster) Ssh(args []string) error {
+func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 	if len(c.Nodes) != 1 {
 		return fmt.Errorf("invalid number of nodes for ssh: %d", len(c.Nodes))
 	}
@@ -675,6 +675,7 @@ func (c *SyncedCluster) Ssh(args []string) error {
 		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
 		"-o", "StrictHostKeyChecking=no",
 	}
+	allArgs = append(allArgs, sshArgs...)
 	if len(args) > 0 {
 		allArgs = append(allArgs, "ROACHPROD=true")
 	}
