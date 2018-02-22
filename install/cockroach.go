@@ -231,17 +231,18 @@ func (Cockroach) NodePort(c *SyncedCluster, index int) int {
 	return port
 }
 
-func (Cockroach) SQL(c *SyncedCluster, args []string) error {
-	url := Cockroach{}.NodeURL(c, "localhost", Cockroach{}.NodePort(c, 0))
-	allArgs := []string{"./cockroach", "sql", "--url", url}
-	allArgs = append(allArgs, args...)
-	if len(args) == 0 {
+func (r Cockroach) SQL(c *SyncedCluster, args []string) error {
+	if len(args) == 0 || len(c.Nodes) == 1 {
 		// If no arguments, we're going to get an interactive SQL shell. Require
-		// exactly one target and ask SSH to provide a psuedoterminal.
-		if len(c.Nodes) != 1 {
+		// exactly one target and ask SSH to provide a pseudoterminal.
+		if len(args) == 0 && len(c.Nodes) != 1 {
 			return fmt.Errorf("invalid number of nodes for interactive sql: %d", len(c.Nodes))
 		}
-		return c.Ssh(append([]string{"-t"}, allArgs...))
+		url := r.NodeURL(c, "localhost", r.NodePort(c, c.Nodes[0]))
+		binary := cockroachNodeBinary(c, c.Nodes[0])
+		allArgs := []string{binary, "sql", "--url", url}
+		allArgs = append(allArgs, ssh.Escape(args))
+		return c.Ssh([]string{"-t"}, allArgs)
 	}
 
 	// Otherwise, assume the user provided the "-e" flag, so we can reasonably
@@ -259,6 +260,11 @@ func (Cockroach) SQL(c *SyncedCluster, args []string) error {
 			return nil, err
 		}
 		defer session.Close()
+
+		url := r.NodeURL(c, "localhost", r.NodePort(c, c.Nodes[i]))
+		binary := cockroachNodeBinary(c, c.Nodes[i])
+		allArgs := []string{binary, "sql", "--url", url}
+		allArgs = append(allArgs, args...)
 
 		out, err := session.CombinedOutput(ssh.Escape(allArgs))
 		if err != nil {
