@@ -3,6 +3,8 @@ package install
 import (
 	"bytes"
 	"fmt"
+
+	"github.com/hashicorp/go-version"
 )
 
 // Memoizes cluster info for install operations
@@ -75,4 +77,12 @@ sudo apt-get install -y \
 		}
 	}
 	return nil
+}
+
+func VersionSatifies(v *version.Version, constraintString string) bool {
+	constraints, err := version.NewConstraint(constraintString)
+	if err != nil {
+		panic(err)
+	}
+	return constraints.Check(v)
 }

@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/cockroachdb/roachprod/install"
-	"github.com/cockroachdb/roachprod/ssh"
 	"io"
 	"io/ioutil"
 	"log"
@@ -15,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cockroachdb/roachprod/install"
+	"github.com/cockroachdb/roachprod/ssh"
 )
 
 var duration time.Duration
