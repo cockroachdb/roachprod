@@ -2,7 +2,6 @@ package install
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -167,6 +166,12 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 	}
 
 	if bootstrapped {
+		license := os.Getenv("COCKROACH_DEV_LICENSE")
+		if license == "" {
+			fmt.Printf("%s: COCKROACH_DEV_LICENSE unset: enterprise features will be unavailable\n",
+				c.Name)
+		}
+
 		var msg string
 		display = fmt.Sprintf("%s: initializing cluster settings", c.Name)
 		c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
@@ -175,11 +180,6 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 				return nil, err
 			}
 			defer session.Close()
-
-			license := os.Getenv("COCKROACH_DEV_LICENSE")
-			if license == "" {
-				log.Printf("warning: COCKROACH_DEV_LICENSE unset: enterprise features will be unavailable")
-			}
 
 			binary := cockroachNodeBinary(c, 1)
 			cmd := ssh.Escape([]string{
