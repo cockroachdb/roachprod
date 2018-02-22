@@ -62,6 +62,8 @@ func (c *SyncedCluster) locality(index int) string {
 	return c.Localities[index-1]
 }
 
+// TODO(tschottdorf): roachprod should cleanly encapsulate the home directory
+// which is currently the biggest culprit for awkward one-offs.
 func (c *SyncedCluster) IsLocal() bool {
 	return c.Name == config.Local
 }
@@ -564,9 +566,15 @@ func (c *SyncedCluster) Get(src, dest string) {
 		go func(i int) {
 			defer wg.Done()
 			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
+
 			if err == nil {
 				defer session.Close()
+				src := src
 				dest := dest
+
+				if c.IsLocal() && !filepath.IsAbs(src) {
+					src = filepath.Join(fmt.Sprintf("local/%d", c.Nodes[i]), src)
+				}
 				if len(c.Nodes) > 1 {
 					base := fmt.Sprintf("%d.%s", c.Nodes[i], filepath.Base(dest))
 					dest = filepath.Join(filepath.Dir(dest), base)
