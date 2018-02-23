@@ -156,12 +156,9 @@ var createCmd = &cobra.Command{
 	Use:          "create <cluster id>",
 	Short:        "create a cluster",
 	Long:         ``,
+	Args:         cobra.ExactArgs(1),
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return fmt.Errorf("wrong number of arguments")
-		}
-
 		if numNodes <= 0 || numNodes >= 1000 {
 			// Upper limit is just for safety.
 			return fmt.Errorf("number of nodes must be in [1..999]")
@@ -171,7 +168,6 @@ var createCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Creating cluster %s with %d nodes\n", clusterName, numNodes)
 
 		if clusterName != config.Local {
 			cloud, err := cld.ListCloud()
@@ -190,6 +186,7 @@ var createCmd = &cobra.Command{
 			createVMOpts.VMProviders = []string{local.ProviderName}
 		}
 
+		fmt.Printf("Creating cluster %s with %d nodes\n", clusterName, numNodes)
 		if err := cld.CreateCluster(clusterName, numNodes, createVMOpts); err != nil {
 			return err
 		}
@@ -244,14 +241,12 @@ var createCmd = &cobra.Command{
 }
 
 var destroyCmd = &cobra.Command{
-	Use:   "destroy <cluster ID>",
-	Short: "destroy a cluster",
-	Long:  ``,
+	Use:          "destroy <cluster ID>",
+	Short:        "destroy a cluster",
+	Long:         ``,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return fmt.Errorf("wrong number of arguments")
-		}
-
 		clusterName, err := verifyClusterName(args[0])
 		if err != nil {
 			return err
@@ -298,9 +293,10 @@ var destroyCmd = &cobra.Command{
 }
 
 var listCmd = &cobra.Command{
-	Use:   "list [--details]",
-	Short: "retrieve the list of clusters",
-	Long:  ``,
+	Use:          "list [--details]",
+	Short:        "retrieve the list of clusters",
+	Long:         ``,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		account, err := vm.FindActiveAccount()
 		if err != nil {
@@ -361,15 +357,15 @@ var listCmd = &cobra.Command{
 }
 
 var syncCmd = &cobra.Command{
-	Use:   "sync",
-	Short: "sync ssh keys/config and hosts files",
-	Long:  ``,
+	Use:          "sync",
+	Short:        "sync ssh keys/config and hosts files",
+	Long:         ``,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cloud, err := cld.ListCloud()
 		if err != nil {
 			return err
 		}
-
 		return syncAll(cloud)
 	},
 }
@@ -420,23 +416,24 @@ func syncAll(cloud *cld.Cloud) error {
 }
 
 var gcCmd = &cobra.Command{
-	Use:   "gc",
-	Short: "GC expired clusters; sends email if properly configured\n",
-	Long:  ``,
+	Use:          "gc",
+	Short:        "GC expired clusters; sends email if properly configured\n",
+	Long:         ``,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cloud, err := cld.ListCloud()
 		if err != nil {
 			return err
 		}
-
 		return cld.GCClusters(cloud, trackingFile, destroyAfter)
 	},
 }
 
 var extendCmd = &cobra.Command{
-	Use:   "extend",
-	Short: "extend the lifetime of the cluster by --lifetime amount of time",
-	Long:  ``,
+	Use:          "extend",
+	Short:        "extend the lifetime of the cluster by --lifetime amount of time",
+	Long:         ``,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return fmt.Errorf("wrong number of arguments")
@@ -473,16 +470,16 @@ var extendCmd = &cobra.Command{
 		}
 
 		c.PrintDetails()
-
 		return nil
 	},
 }
 
 var startCmd = &cobra.Command{
-	Use:   "start <cluster>",
-	Short: "start a cluster",
-	Long:  `Start a cluster.`,
-	Args:  cobra.ExactArgs(1),
+	Use:          "start <cluster>",
+	Short:        "start a cluster",
+	Long:         `Start a cluster.`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -494,10 +491,11 @@ var startCmd = &cobra.Command{
 }
 
 var stopCmd = &cobra.Command{
-	Use:   "stop <cluster>",
-	Short: "stop a cluster",
-	Long:  `Stop a cluster.`,
-	Args:  cobra.ExactArgs(1),
+	Use:          "stop <cluster>",
+	Short:        "stop a cluster",
+	Long:         `Stop a cluster.`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -509,10 +507,11 @@ var stopCmd = &cobra.Command{
 }
 
 var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "retrieve the status of a cluster",
-	Long:  `Retrieve the status of a cluster.`,
-	Args:  cobra.ExactArgs(1),
+	Use:          "status",
+	Short:        "retrieve the status of a cluster",
+	Long:         `Retrieve the status of a cluster.`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -524,10 +523,11 @@ var statusCmd = &cobra.Command{
 }
 
 var monitorCmd = &cobra.Command{
-	Use:   "monitor",
-	Short: "monitor the status of a cluster",
-	Long:  `Continuously monitor the status of a cluster.`,
-	Args:  cobra.ExactArgs(1),
+	Use:          "monitor",
+	Short:        "monitor the status of a cluster",
+	Long:         `Continuously monitor the status of a cluster.`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -541,10 +541,11 @@ var monitorCmd = &cobra.Command{
 }
 
 var wipeCmd = &cobra.Command{
-	Use:   "wipe <cluster>",
-	Short: "wipe a cluster",
-	Long:  `Wipe a cluster.`,
-	Args:  cobra.ExactArgs(1),
+	Use:          "wipe <cluster>",
+	Short:        "wipe a cluster",
+	Long:         `Wipe a cluster.`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -556,10 +557,11 @@ var wipeCmd = &cobra.Command{
 }
 
 var runCmd = &cobra.Command{
-	Use:   "run <cluster> <command> [args]",
-	Short: "run a command on the nodes in a cluster",
-	Long:  `Run a command on the nodes in a cluster.`,
-	Args:  cobra.MinimumNArgs(2),
+	Use:          "run <cluster> <command> [args]",
+	Short:        "run a command on the nodes in a cluster",
+	Long:         `Run a command on the nodes in a cluster.`,
+	Args:         cobra.MinimumNArgs(2),
+	SilenceUsage: true,
 	RunE: func(_ *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -591,7 +593,8 @@ directory of a previous test. For example:
 
 will restart the kv_0 test on denim using the cockroach binary with the build
 tag 6151ae1.`,
-	Args: cobra.MinimumNArgs(2),
+	Args:         cobra.MinimumNArgs(2),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		for _, arg := range args[1:] {
 			if err := runTest(arg, args[0]); err != nil {
@@ -611,7 +614,8 @@ var installCmd = &cobra.Command{
   mongodb
   postgres
   tools (fio, iftop, perf)`,
-	Args: cobra.MinimumNArgs(2),
+	Args:         cobra.MinimumNArgs(2),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -622,10 +626,11 @@ var installCmd = &cobra.Command{
 }
 
 var putCmd = &cobra.Command{
-	Use:   "put <cluster> <src> [<dest>]",
-	Short: "copy a local file to the nodes in a cluster",
-	Long:  `Copy a local file to the nodes in a cluster.`,
-	Args:  cobra.RangeArgs(2, 3),
+	Use:          "put <cluster> <src> [<dest>]",
+	Short:        "copy a local file to the nodes in a cluster",
+	Long:         `Copy a local file to the nodes in a cluster.`,
+	Args:         cobra.RangeArgs(2, 3),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		src := args[1]
 		dest := path.Base(src)
@@ -646,7 +651,8 @@ var getCmd = &cobra.Command{
 	Short: "copy a remote file from the nodes in a cluster",
 	Long: `Copy a remote file from the nodes in a cluster. If the file is retrieved from
 multiple nodes the destination file name will be prefixed with the node number.`,
-	Args: cobra.RangeArgs(2, 3),
+	Args:         cobra.RangeArgs(2, 3),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		src := args[1]
 		dest := path.Base(src)
@@ -673,7 +679,6 @@ var sshCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-
 		return c.Ssh(nil, args[1:])
 	},
 }
@@ -698,10 +703,11 @@ var sqlCmd = &cobra.Command{
 }
 
 var pgurlCmd = &cobra.Command{
-	Use:   "pgurl <cluster>",
-	Short: "generate pgurls for the nodes in a cluster\n",
-	Long:  `Generate pgurls for the nodes in a cluster.`,
-	Args:  cobra.ExactArgs(1),
+	Use:          "pgurl <cluster>",
+	Short:        "generate pgurls for the nodes in a cluster",
+	Long:         `Generate pgurls for the nodes in a cluster.`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -733,10 +739,11 @@ var pgurlCmd = &cobra.Command{
 }
 
 var adminurlCmd = &cobra.Command{
-	Use:   "adminurl <cluster>",
-	Short: "generate admin UI URLs for the nodes in a cluster\n",
-	Long:  `Generate admin UI URLs for the nodes in a cluster.`,
-	Args:  cobra.ExactArgs(1),
+	Use:          "adminurl <cluster>",
+	Short:        "generate admin UI URLs for the nodes in a cluster\n",
+	Long:         `Generate admin UI URLs for the nodes in a cluster.`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
@@ -758,15 +765,17 @@ var webCmd = &cobra.Command{
 	Long: `
 Visualize the output of a single test or compare the output of two tests.
 `,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return web(args)
 	},
 }
 
 var dumpCmd = &cobra.Command{
-	Use:   "dump <testdir> [<testdir>]",
-	Short: "dump test output",
-	Long:  ``,
+	Use:          "dump <testdir> [<testdir>]",
+	Short:        "dump test output",
+	Long:         ``,
+	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return dump(args)
 	},
