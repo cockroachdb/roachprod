@@ -674,7 +674,7 @@ var sshCmd = &cobra.Command{
 			return err
 		}
 
-		return c.Ssh(args[1:])
+		return c.Ssh(nil, args[1:])
 	},
 }
 
