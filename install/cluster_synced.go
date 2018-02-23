@@ -139,10 +139,11 @@ func (c *SyncedCluster) Wipe() {
 
 		var cmd string
 		if c.IsLocal() {
-			cmd = fmt.Sprintf(`rm -fr ${HOME}/local/%d/{logs,data} ;`, c.Nodes[i])
+			cmd = fmt.Sprintf(`rm -fr ${HOME}/local/%d/{certs*,data,logs} ;`, c.Nodes[i])
 		} else {
 			cmd = `find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; ;
 rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo-data} \; ;
+rm -fr certs* ;
 `
 		}
 		return session.CombinedOutput(cmd)

@@ -1,7 +1,9 @@
 package install
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,6 +89,148 @@ func GetAdminUIPort(connPort int) int {
 }
 
 func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
+	// Check to see if node 1 was started indicating the cluster was
+	// bootstrapped.
+	var bootstrapped bool
+	for _, i := range c.ServerNodes() {
+		if i == 1 {
+			bootstrapped = true
+			break
+		}
+	}
+
+	if c.Secure && bootstrapped {
+		dir := ""
+		if c.IsLocal() {
+			dir = `${HOME}/local/1`
+		}
+
+		// Check to see if the certs have already been initialized.
+		var existsErr error
+		display := fmt.Sprintf("%s: checking certs", c.Name)
+		c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
+			session, err := ssh.NewSSHSession(c.user(1), c.host(1))
+			if err != nil {
+				return nil, err
+			}
+			defer session.Close()
+			_, existsErr = session.CombinedOutput(`test -e ` + filepath.Join(dir, `certs.tar`))
+			return nil, nil
+		})
+
+		if existsErr != nil {
+			// Gather the internal IP addresses for every node in the cluster, even
+			// if it won't be added to the cluster itself we still add the IP address
+			// to the node cert.
+			var msg string
+			display := fmt.Sprintf("%s: initializing certs", c.Name)
+			nodes := allNodes(len(c.VMs))
+			var ips []string
+			if !c.IsLocal() {
+				ips = make([]string, len(nodes))
+				c.Parallel("", len(nodes), 0, func(i int) ([]byte, error) {
+					var err error
+					ips[i], err = c.GetInternalIP(nodes[i])
+					return nil, err
+				})
+			}
+
+			// Generate the ca, client and node certificates on the first node.
+			c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
+				session, err := ssh.NewSSHSession(c.user(1), c.host(1))
+				if err != nil {
+					return nil, err
+				}
+				defer session.Close()
+
+				var nodeNames []string
+				if c.IsLocal() {
+					// For local clusters, we only need to add one of the VM IP addresses.
+					nodeNames = append(nodeNames, "$(hostname)", c.VMs[0])
+				} else {
+					// Add both the local and external IP addresses, as well as the
+					// hostnames to the node certificate.
+					nodeNames = append(nodeNames, ips...)
+					nodeNames = append(nodeNames, c.VMs...)
+					for i := range c.VMs {
+						nodeNames = append(nodeNames, fmt.Sprintf("%s-%04d", c.Name, i+1))
+					}
+				}
+
+				var cmd string
+				if c.IsLocal() {
+					cmd = `cd ${HOME}/local/1 ; `
+				}
+				cmd += fmt.Sprintf(`
+rm -fr certs
+mkdir -p certs
+%[1]s cert create-ca --certs-dir=certs --ca-key=certs/ca.key
+%[1]s cert create-client root --certs-dir=certs --ca-key=certs/ca.key
+%[1]s cert create-node localhost %[2]s --certs-dir=certs --ca-key=certs/ca.key
+tar cvf certs.tar certs
+`, cockroachNodeBinary(c, 1), strings.Join(nodeNames, " "))
+				if _, err := session.CombinedOutput(cmd); err != nil {
+					msg = err.Error()
+				}
+				return nil, nil
+			})
+
+			if msg != "" {
+				fmt.Fprintln(os.Stderr, msg)
+				os.Exit(1)
+			}
+
+			// Retrieve the certs.tar that was created on the first node.
+			tmpfile, err := ioutil.TempFile("", "certs")
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			_ = tmpfile.Close()
+			defer os.Remove(tmpfile.Name()) // clean up
+
+			if err := func() error {
+				session, err := ssh.NewSSHSession(c.user(1), c.host(1))
+				if err != nil {
+					return err
+				}
+				defer session.Close()
+				return ssh.SCPGet(filepath.Join(dir, "certs.tar"),
+					tmpfile.Name(), func(float64) {}, session)
+			}(); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+
+			// Read the certs.tar file we just downloaded. We'll be piping it to the
+			// other nodes in the cluster.
+			certsTar, err := ioutil.ReadFile(tmpfile.Name())
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+
+			// Skip the the first node which is where we generated the certs.
+			nodes = nodes[1:]
+			c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
+				session, err := ssh.NewSSHSession(c.user(nodes[i]), c.host(nodes[i]))
+				if err != nil {
+					return nil, err
+				}
+				defer session.Close()
+
+				session.Stdin = bytes.NewReader(certsTar)
+				var cmd string
+				if c.IsLocal() {
+					cmd = fmt.Sprintf(`cd ${HOME}/local/%d ; `, nodes[i])
+				}
+				cmd += `tar xf -`
+				_, err = session.CombinedOutput(cmd)
+				return nil, err
+			})
+		}
+	}
+
 	display := fmt.Sprintf("%s: starting", c.Name)
 	host1 := c.host(1)
 	nodes := c.ServerNodes()
@@ -114,7 +258,11 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 
 		var args []string
 		if c.Secure {
-			args = append(args, "--certs-dir=certs")
+			if c.IsLocal() {
+				args = append(args, fmt.Sprintf("--certs-dir=${HOME}/local/%d/certs", nodes[i]))
+			} else {
+				args = append(args, "--certs-dir=certs")
+			}
 		} else {
 			args = append(args, "--insecure")
 		}
@@ -158,16 +306,6 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 		return session.CombinedOutput(cmd)
 	})
 
-	// Check to see if node 1 was started indicating the cluster was
-	// bootstrapped.
-	var bootstrapped bool
-	for _, i := range nodes {
-		if i == 1 {
-			bootstrapped = true
-			break
-		}
-	}
-
 	if bootstrapped {
 		license := os.Getenv("COCKROACH_DEV_LICENSE")
 		if license == "" {
@@ -184,15 +322,16 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 			}
 			defer session.Close()
 
-			binary := cockroachNodeBinary(c, 1)
-			cmd := ssh.Escape([]string{
-				binary, "sql", "--url", r.NodeURL(c, "localhost", r.NodePort(c, 1)), "-e",
-				fmt.Sprintf(`
-SET CLUSTER SETTING kv.allocator.stat_based_rebalancing.enabled = false;
+			var cmd string
+			if c.IsLocal() {
+				cmd = `cd ${HOME}/local/1 ; `
+			}
+			cmd += cockroachNodeBinary(c, 1) + " sql --url " +
+				r.NodeURL(c, "localhost", r.NodePort(c, 1)) + " -e " +
+				fmt.Sprintf(`"
 SET CLUSTER SETTING server.remote_debugging.mode = 'any';
 SET CLUSTER SETTING cluster.organization = 'Cockroach Labs - Production Testing';
-SET CLUSTER SETTING enterprise.license = '%s';`, license),
-			})
+SET CLUSTER SETTING enterprise.license = '%s';"`, license)
 			out, err := session.CombinedOutput(cmd)
 			if err != nil {
 				msg = err.Error()
@@ -264,12 +403,15 @@ func (r Cockroach) SQL(c *SyncedCluster, args []string) error {
 		}
 		defer session.Close()
 
-		url := r.NodeURL(c, "localhost", r.NodePort(c, c.Nodes[i]))
-		binary := cockroachNodeBinary(c, c.Nodes[i])
-		allArgs := []string{binary, "sql", "--url", url}
-		allArgs = append(allArgs, args...)
+		var cmd string
+		if c.IsLocal() {
+			cmd = fmt.Sprintf(`cd ${HOME}/local/%d ; `, c.Nodes[i])
+		}
+		cmd += cockroachNodeBinary(c, c.Nodes[i]) + " sql --url " +
+			r.NodeURL(c, "localhost", r.NodePort(c, c.Nodes[i])) + " " +
+			ssh.Escape(args)
 
-		out, err := session.CombinedOutput(ssh.Escape(allArgs))
+		out, err := session.CombinedOutput(cmd)
 		if err != nil {
 			resultChan <- result{node: c.Nodes[i], output: fmt.Sprintf("err=%s,out=%s", err, out)}
 			return out, err
