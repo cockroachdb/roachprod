@@ -753,7 +753,11 @@ var adminurlCmd = &cobra.Command{
 		for _, node := range c.ServerNodes() {
 			ip := c.VMs[node-1]
 			port := install.GetAdminUIPort(c.Impl.NodePort(c, node))
-			fmt.Printf("http://%s:%d/\n", ip, port)
+			scheme := "http"
+			if c.Secure {
+				scheme = "https"
+			}
+			fmt.Printf("%s://%s:%d/\n", scheme, ip, port)
 		}
 		return nil
 	},
@@ -795,27 +799,37 @@ func main() {
 			"Username to run under, detect if blank")
 	}
 
-	createCmd.Flags().DurationVarP(&createVMOpts.Lifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
-	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD, "local-ssd", true, "Use local SSD")
-	createCmd.Flags().IntVarP(&numNodes, "nodes", "n", 4, "Total number of nodes, distributed across all clouds")
-	createCmd.Flags().StringSliceVarP(&createVMOpts.VMProviders, "clouds", "c", []string{gce.ProviderName}, "The cloud provider(s) to use when creating new vm instances")
-	createCmd.Flags().BoolVar(&createVMOpts.GeoDistributed, "geo", false, "Create geo-distributed cluster")
+	createCmd.Flags().DurationVarP(&createVMOpts.Lifetime,
+		"lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
+	createCmd.Flags().BoolVar(&createVMOpts.UseLocalSSD,
+		"local-ssd", true, "Use local SSD")
+	createCmd.Flags().IntVarP(&numNodes,
+		"nodes", "n", 4, "Total number of nodes, distributed across all clouds")
+	createCmd.Flags().StringSliceVarP(&createVMOpts.VMProviders,
+		"clouds", "c", []string{gce.ProviderName},
+		"The cloud provider(s) to use when creating new vm instances")
+	createCmd.Flags().BoolVar(&createVMOpts.GeoDistributed,
+		"geo", false, "Create geo-distributed cluster")
 	// Allow each Provider to inject additional configuration flags
 	for _, p := range vm.Providers {
 		p.Flags().ConfigureCreateFlags(createCmd.Flags())
 	}
 
-	extendCmd.Flags().DurationVarP(&extendLifetime, "lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
+	extendCmd.Flags().DurationVarP(&extendLifetime,
+		"lifetime", "l", 12*time.Hour, "Lifetime of the cluster")
 
-	listCmd.Flags().BoolVarP(&listDetails, "details", "d", false, "Show cluster details")
+	listCmd.Flags().BoolVarP(&listDetails,
+		"details", "d", false, "Show cluster details")
 
 	gcCmd.Flags().StringVar(&config.GCEmailOpts.From, "email-from", "", "Address of the sender")
 	gcCmd.Flags().StringVar(&config.GCEmailOpts.Host, "email-host", "", "SMTP host")
 	gcCmd.Flags().IntVar(&config.GCEmailOpts.Port, "email-port", 587, "SMTP port")
 	gcCmd.Flags().StringVar(&config.GCEmailOpts.User, "email-user", "", "SMTP user")
 	gcCmd.Flags().StringVar(&config.GCEmailOpts.Password, "email-password", "", "SMTP password")
-	gcCmd.Flags().DurationVar(&destroyAfter, "destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
-	gcCmd.Flags().StringVar(&trackingFile, "tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
+	gcCmd.Flags().DurationVar(&destroyAfter,
+		"destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
+	gcCmd.Flags().StringVar(&trackingFile,
+		"tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
 
 	pgurlCmd.Flags().BoolVar(
 		&external, "external", false, "return pgurls for external connections")
@@ -823,30 +837,34 @@ func main() {
 	sshCmd.Flags().BoolVar(
 		&secure, "secure", false, "use a secure cluster")
 
-	startCmd.Flags().StringVarP(
-		&config.Binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
-	startCmd.Flags().BoolVar(
-		&install.StartOpts.Sequential, "sequential", false, "start nodes sequentially so node IDs match hostnames")
-
-	testCmd.Flags().StringVarP(
-		&config.Binary, "binary", "b", "./cockroach", "the remote cockroach binary used to start a server")
 	testCmd.Flags().DurationVarP(
 		&duration, "duration", "d", 5*time.Minute, "the duration to run each test")
 	testCmd.Flags().StringVarP(
 		&concurrency, "concurrency", "c", "1-64", "the concurrency to run each test")
 
 	for _, cmd := range []*cobra.Command{
-		getCmd, putCmd, runCmd, startCmd, statusCmd, stopCmd, testCmd, wipeCmd, pgurlCmd, sqlCmd,
-		installCmd,
+		getCmd, putCmd, runCmd, startCmd, statusCmd, stopCmd, testCmd,
+		wipeCmd, pgurlCmd, adminurlCmd, sqlCmd, installCmd,
 	} {
-		cmd.Flags().BoolVar(
-			&secure, "secure", false, "use a secure cluster")
-		cmd.Flags().StringSliceVarP(
-			&nodeArgs, "args", "a", nil, "node arguments")
-		cmd.Flags().StringVarP(
-			&nodeEnv, "env", "e", nodeEnv, "node environment variables")
-		cmd.Flags().StringVarP(
-			&clusterType, "type", "t", clusterType, `cluster type ("cockroach" or "cassandra")`)
+		switch cmd {
+		case startCmd, testCmd:
+			cmd.Flags().StringVarP(
+				&config.Binary, "binary", "b", "./cockroach",
+				"the remote cockroach binary used to start a server")
+			cmd.Flags().BoolVar(
+				&install.StartOpts.Sequential, "sequential", false,
+				"start nodes sequentially so node IDs match hostnames")
+			cmd.Flags().StringSliceVarP(
+				&nodeArgs, "args", "a", nil, "node arguments")
+			cmd.Flags().StringVarP(
+				&nodeEnv, "env", "e", nodeEnv, "node environment variables")
+			cmd.Flags().StringVarP(
+				&clusterType, "type", "t", clusterType, `cluster type ("cockroach" or "cassandra")`)
+			fallthrough
+		case pgurlCmd, adminurlCmd, sqlCmd:
+			cmd.Flags().BoolVar(
+				&secure, "secure", false, "use a secure cluster")
+		}
 
 		if cmd.Long == "" {
 			cmd.Long = cmd.Short
