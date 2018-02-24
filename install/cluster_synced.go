@@ -161,6 +161,10 @@ func (c *SyncedCluster) Status() {
 		}
 		defer session.Close()
 
+		// TODO(peter): Rather than tagging processes with ROACHPROD=true, we could
+		// tag them with ROACHPROD=<nodeID> which would allow us to find all of the
+		// processes started by roachprod for a specific node even when running on
+		// localhost.
 		cmd := fmt.Sprintf("out=$(lsof -i :%d -i :%d -sTCP:LISTEN",
 			Cockroach{}.NodePort(c, c.Nodes[i]),
 			Cassandra{}.NodePort(c, c.Nodes[i]))
