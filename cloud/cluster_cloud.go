@@ -78,8 +78,15 @@ func (c *CloudCluster) ExpiresAt() time.Time {
 	return c.CreatedAt.Add(c.Lifetime)
 }
 
+func (c *CloudCluster) GCAt() time.Time {
+	// NB: GC is performed every hour. We calculate the lifetime of the cluster
+	// taking the GC time into account to accurately reflect when the cluster
+	// will be destroyed.
+	return c.ExpiresAt().Add(time.Hour - 1).Truncate(time.Hour)
+}
+
 func (c *CloudCluster) LifetimeRemaining() time.Duration {
-	return time.Until(c.ExpiresAt())
+	return time.Until(c.GCAt())
 }
 
 func (c *CloudCluster) String() string {

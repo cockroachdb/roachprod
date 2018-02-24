@@ -7,9 +7,10 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"path"
+	"path/filepath"
 	"sort"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/cockroachdb/roachprod/config"
@@ -23,14 +24,16 @@ type status struct {
 	destroy []*CloudCluster
 }
 
-func (s *status) add(c *CloudCluster, now, destroyDeadline time.Time) {
+func (s *status) add(c *CloudCluster, now time.Time) {
 	exp := c.ExpiresAt()
 	if exp.After(now) {
-		s.good = append(s.good, c)
-	} else if exp.Before(destroyDeadline) {
-		s.destroy = append(s.destroy, c)
+		if exp.Before(now.Add(2 * time.Hour)) {
+			s.warn = append(s.warn, c)
+		} else {
+			s.good = append(s.good, c)
+		}
 	} else {
-		s.warn = append(s.warn, c)
+		s.destroy = append(s.destroy, c)
 	}
 }
 
@@ -108,6 +111,26 @@ func findUserChannel(client *slack.Client, email string) (string, error) {
 func postStatus(
 	client *slack.Client, channel string, dryrun bool, s *status, badVMs vm.List,
 ) {
+	if dryrun {
+		tw := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+		for _, c := range s.good {
+			fmt.Fprintf(tw, "good:\t%s\t%s\t(%s)\n", c.Name,
+				c.GCAt().Format(time.Stamp),
+				c.LifetimeRemaining().Round(time.Second))
+		}
+		for _, c := range s.warn {
+			fmt.Fprintf(tw, "warn:\t%s\t%s\t(%s)\n", c.Name,
+				c.GCAt().Format(time.Stamp),
+				c.LifetimeRemaining().Round(time.Second))
+		}
+		for _, c := range s.destroy {
+			fmt.Fprintf(tw, "destroy:\t%s\t%s\t(%s)\n", c.Name,
+				c.GCAt().Format(time.Stamp),
+				c.LifetimeRemaining().Round(time.Second))
+		}
+		_ = tw.Flush()
+	}
+
 	if client == nil || channel == "" {
 		return
 	}
@@ -131,7 +154,7 @@ func postStatus(
 			names = append(names, c.Name)
 			expirations = append(expirations,
 				fmt.Sprintf("<!date^%[1]d^{date_short_pretty} {time}|%[2]s>",
-					c.ExpiresAt().Unix(),
+					c.GCAt().Unix(),
 					c.LifetimeRemaining().Round(time.Second)))
 		}
 		return []slack.AttachmentField{
@@ -166,7 +189,7 @@ func postStatus(
 		params.Attachments = append(params.Attachments,
 			slack.Attachment{
 				Color:    "warning",
-				Title:    "Expired Clusters",
+				Title:    "Expiring Clusters",
 				Fallback: fallback,
 				Fields:   makeStatusFields(s.warn),
 			})
@@ -221,11 +244,11 @@ func postError(client *slack.Client, channel string, err error) {
 // sent to the channel.  The error returned by this function is
 // advisory; the boolean value is always a reasonable behavior.
 func shouldSend(channel string, status *status) (bool, error) {
-	hashDir := os.ExpandEnv(path.Join("${HOME}", ".roachprod", "slack"))
+	hashDir := os.ExpandEnv(filepath.Join("${HOME}", ".roachprod", "slack"))
 	if err := os.MkdirAll(hashDir, 0755); err != nil {
 		return true, err
 	}
-	hashPath := os.ExpandEnv(path.Join(hashDir, "notification-"+channel))
+	hashPath := os.ExpandEnv(filepath.Join(hashDir, "notification-"+channel))
 	fileBytes, err := ioutil.ReadFile(hashPath)
 	if err != nil && !os.IsNotExist(err) {
 		return true, err
@@ -243,13 +266,14 @@ func shouldSend(channel string, status *status) (bool, error) {
 // GCClusters checks all cluster to see if they should be deleted. It only
 // fails on failure to perform cloud actions. All others actions (load/save
 // file, email) do not abort.
-func GCClusters(cloud *Cloud, dryrun bool, destroyAfter time.Duration) error {
+func GCClusters(cloud *Cloud, dryrun bool) error {
 	now := time.Now()
-	destroyDeadline := now.Add(-destroyAfter)
 
 	var names []string
 	for name := range cloud.Clusters {
-		names = append(names, name)
+		if name != config.Local {
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 
@@ -262,8 +286,8 @@ func GCClusters(cloud *Cloud, dryrun bool, destroyAfter time.Duration) error {
 			u = &status{}
 			users[c.User] = u
 		}
-		s.add(c, now, destroyDeadline)
-		u.add(c, now, destroyDeadline)
+		s.add(c, now)
+		u.add(c, now)
 	}
 
 	// Compile list of "bad vms" and destroy them.

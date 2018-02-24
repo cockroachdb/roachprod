@@ -54,7 +54,6 @@ var (
 	numNodes       int
 	username       string
 	dryrun         bool
-	destroyAfter   time.Duration
 	extendLifetime time.Duration
 	listDetails    bool
 	listMine       bool
@@ -451,7 +450,7 @@ hosts file.
 
 		// Filter and sort by cluster names for stable output
 		var names []string
-		for name, _ := range cloud.Clusters {
+		for name := range cloud.Clusters {
 			if listPattern.MatchString(name) {
 				names = append(names, name)
 			}
@@ -572,7 +571,7 @@ hourly by a cronjob so it is not necessary to run manually.
 		if err != nil {
 			return err
 		}
-		return cld.GCClusters(cloud, dryrun, destroyAfter)
+		return cld.GCClusters(cloud, dryrun)
 	}),
 }
 
@@ -1072,8 +1071,6 @@ func main() {
 	gcCmd.Flags().BoolVarP(
 		&dryrun, "dry-run", "n", dryrun, "dry run (don't perform any actions)")
 	gcCmd.Flags().StringVar(&config.SlackToken, "slack-token", "", "Slack bot token")
-	gcCmd.Flags().DurationVar(&destroyAfter,
-		"destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
 
 	pgurlCmd.Flags().BoolVar(
 		&external, "external", false, "return pgurls for external connections")
