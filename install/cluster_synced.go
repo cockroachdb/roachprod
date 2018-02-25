@@ -255,6 +255,12 @@ done
 `,
 				Cockroach{}.NodePort(c, nodes[i]))
 
+			// Request a PTY so that the script will receive will receive a SIGPIPE
+			// when the session is closed.
+			if err := session.RequestPty("vt100", 40, 80, nil); err != nil {
+				ch <- nodeMonitorInfo{nodes[i], err.Error()}
+				return
+			}
 			// Give the session a valid stdin pipe so that nc won't exit immediately.
 			inPipe, err := session.StdinPipe()
 			if err != nil {
