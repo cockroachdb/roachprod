@@ -300,8 +300,9 @@ tar cvf certs.tar certs
 		// NB: this is awkward as when the process fails, the test runner will show an
 		// unhelpful empty error (since everything has been redirected away). This is
 		// unfortunately equally awkward to address.
-		cmd := "mkdir -p " + logDir + "; " +
-			c.Env + " ROACHPROD=true " + binary + " start " + strings.Join(args, " ") +
+		cmd := "mkdir -p " + logDir + "; " + c.Env +
+			fmt.Sprintf(" ROACHPROD=%d ", nodes[i]) +
+			binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr"
 		return session.CombinedOutput(cmd)
 	})

@@ -620,9 +620,9 @@ var stopCmd = &cobra.Command{
 
 Stop roachprod created processes running on the nodes in a cluster, including
 processes started by the "start", "run" and "ssh" commands. Every process
-started by roachprod is tagged with a ROACHPROD=true environment variable which
-is used by "stop" to locate the processes and terminate them. Processes are
-killed with signal 9 (SIGKILL) giving them no chance for a graceful exit.
+started by roachprod is tagged with a ROACHPROD=<node> environment variable
+which is used by "stop" to locate the processes and terminate them. Processes
+are killed with signal 9 (SIGKILL) giving them no chance for a graceful exit.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {

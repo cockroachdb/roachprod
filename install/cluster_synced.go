@@ -122,7 +122,9 @@ func (c *SyncedCluster) Stop() {
 		// NB: xargs --no-run-if-empty is not supported on OSX.
 		// NB: the awkward-looking `awk` invocation serves to avoid having the
 		// awk process match its own output from `ps`.
-		cmd := "ps axeww -o pid -o command | awk '/ROACHPROD=[t]rue/ { print $1 }' | xargs kill -9 || true;"
+		cmd := fmt.Sprintf(
+			"ps axeww -o pid -o command | awk '/ROACHPROD=(true|%d)/ { print $1 }' | xargs kill -9 || true;",
+			c.Nodes[i])
 		return session.CombinedOutput(cmd)
 	})
 }
@@ -161,15 +163,12 @@ func (c *SyncedCluster) Status() {
 		}
 		defer session.Close()
 
-		// TODO(peter): Rather than tagging processes with ROACHPROD=true, we could
-		// tag them with ROACHPROD=<nodeID> which would allow us to find all of the
-		// processes started by roachprod for a specific node even when running on
-		// localhost.
-		cmd := fmt.Sprintf("out=$(lsof -i :%d -i :%d -sTCP:LISTEN",
-			Cockroach{}.NodePort(c, c.Nodes[i]),
-			Cassandra{}.NodePort(c, c.Nodes[i]))
-		cmd += ` | awk '!/COMMAND/ {print $1, $2}' | sort | uniq);
-vers=$(` + config.Binary + ` version 2>/dev/null | awk '/Build Tag:/ {print $NF}')
+		binary := cockroachNodeBinary(c, c.Nodes[i])
+		cmd := fmt.Sprintf(
+			"out=$(ps axeww -o ucomm -o pid -o command | awk '/ROACHPROD=(%d)/ {print $1, $2}'",
+			c.Nodes[i])
+		cmd += ` | sort | uniq);
+vers=$(` + binary + ` version 2>/dev/null | awk '/Build Tag:/ {print $NF}')
 if [ -n "${out}" -a -n "${vers}" ]; then
   echo ${out} | sed "s/cockroach/cockroach-${vers}/g"
 else
@@ -286,7 +285,7 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		}
 		defer session.Close()
 
-		nodeCmd := "ROACHPROD=true " + cmd
+		nodeCmd := fmt.Sprintf("ROACHPROD=%d ", nodes[i]) + cmd
 		if c.IsLocal() {
 			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], cmd)
 		}
@@ -425,7 +424,8 @@ func (c *SyncedCluster) RunLoad(cmd string, stdout, stderr io.Writer) error {
 	for i, ip := range ips {
 		urls = append(urls, c.Impl.NodeURL(c, ip, c.Impl.NodePort(c, nodes[i])))
 	}
-	return session.Run("ulimit -n 16384; ROACHPROD=true " + cmd + " " + strings.Join(urls, " "))
+	prefix := fmt.Sprintf("ulimit -n 16384; ROACHPROD=%d ", c.LoadGen)
+	return session.Run(prefix + cmd + " " + strings.Join(urls, " "))
 }
 
 const progressDone = "=======================================>"
@@ -690,7 +690,7 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 	}
 	allArgs = append(allArgs, sshArgs...)
 	if len(args) > 0 {
-		allArgs = append(allArgs, "ROACHPROD=true")
+		allArgs = append(allArgs, fmt.Sprintf("ROACHPROD=%d", c.Nodes[0]))
 	}
 	if c.IsLocal() {
 		allArgs = append(allArgs, fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0]))
