@@ -384,7 +384,6 @@ The default output shows one line per cluster, including the local cluster if
 it exists:
 
   ~ roachprod list
-  Account: marc
   local:     [local]    1  (-)
   marc-test: [aws gce]  4  (5h34m35s)
   Syncing...
@@ -398,7 +397,6 @@ local clusters do not have an expiration.
 The --details adjusts the output format to include per-node details:
 
   ~ roachprod list --details
-  Account: marc
   local [local]: (no expiration)
     localhost		127.0.0.1	127.0.0.1
   marc-test: [aws gce] 5h33m57s remaining
@@ -420,7 +418,6 @@ hosts file.
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Account: %s\n", account)
 
 		listPattern := regexp.MustCompile(".*")
 		switch len(args) {
