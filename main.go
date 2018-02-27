@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"os/exec"
 	"os/user"
 	"path"
 	"path/filepath"
@@ -263,6 +265,16 @@ Local Clusters
 					return fmt.Errorf("could not find %s in list of cluster", clusterName)
 				}
 				c.PrintDetails()
+
+				// Run ssh-keygen -R serially on each new VM in case an IP address has been recycled
+				for _, v := range c.VMs {
+					cmd := exec.Command("ssh-keygen", "-R", v.PublicIP)
+					out, err := cmd.CombinedOutput()
+					if err != nil {
+						log.Printf("could not clear ssh key for hostname %s:\n%s", v.PublicIP, string(out))
+						return err
+					}
+				}
 
 				if err := syncAll(cloud); err != nil {
 					return err
