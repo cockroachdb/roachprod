@@ -291,7 +291,7 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		}
 		defer session.Close()
 
-		nodeCmd := fmt.Sprintf("ROACHPROD=%d ", nodes[i]) + cmd
+		nodeCmd := fmt.Sprintf("export ROACHPROD=%d && ", nodes[i]) + cmd
 		if c.IsLocal() {
 			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], cmd)
 		}
@@ -430,7 +430,7 @@ func (c *SyncedCluster) RunLoad(cmd string, stdout, stderr io.Writer) error {
 	for i, ip := range ips {
 		urls = append(urls, c.Impl.NodeURL(c, ip, c.Impl.NodePort(c, nodes[i])))
 	}
-	prefix := fmt.Sprintf("ulimit -n 16384; ROACHPROD=%d ", c.LoadGen)
+	prefix := fmt.Sprintf("ulimit -n 16384; export ROACHPROD=%d && ", c.LoadGen)
 	return session.Run(prefix + cmd + " " + strings.Join(urls, " "))
 }
 
@@ -696,7 +696,7 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 	}
 	allArgs = append(allArgs, sshArgs...)
 	if len(args) > 0 {
-		allArgs = append(allArgs, fmt.Sprintf("ROACHPROD=%d", c.Nodes[0]))
+		allArgs = append(allArgs, fmt.Sprintf("export ROACHPROD=%d ;", c.Nodes[0]))
 	}
 	if c.IsLocal() {
 		allArgs = append(allArgs, fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0]))
