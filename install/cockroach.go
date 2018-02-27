@@ -235,6 +235,17 @@ tar cvf certs.tar certs
 	host1 := c.host(1)
 	nodes := c.ServerNodes()
 
+	// If we're creating nodes that span VPC (e.g. AWS multi-region or
+	// multi-cloud), we'll tell the nodes to advertise their public IPs
+	// so that attaching nodes to the cluster Just Works.
+	var advertisePublicIP bool
+	for i, vpc := range c.VPCs {
+		if i > 0 && vpc != c.VPCs[0] {
+			advertisePublicIP = true
+			break
+		}
+	}
+
 	p := 0
 	if StartOpts.Sequential {
 		p = 1
@@ -293,6 +304,9 @@ tar cvf certs.tar certs
 		}
 		if nodes[i] != 1 {
 			args = append(args, fmt.Sprintf("--join=%s:%d", host1, r.NodePort(c, 1)))
+		}
+		if advertisePublicIP {
+			args = append(args, fmt.Sprintf("--advertise-host=%s", host))
 		}
 		args = append(args, extraArgs...)
 

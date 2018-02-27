@@ -3,6 +3,7 @@ package gce
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math"
 	"os"
 	"os/exec"
@@ -21,8 +22,13 @@ const (
 	ProviderName = "gce"
 )
 
+// init will inject the GCE provider into vm.Providers, but only if the gcloud tool is available on the local path.
 func init() {
-	vm.Providers[ProviderName] = &Provider{}
+	if _, err := exec.LookPath("gcloud"); err == nil {
+		vm.Providers[ProviderName] = &Provider{}
+	} else {
+		log.Printf("please install the gcloud CLI utilities (https://cloud.google.com/sdk/downloads)")
+	}
 }
 
 func runJSONCommand(args []string, parsed interface{}) error {
@@ -46,6 +52,7 @@ type jsonVM struct {
 	Labels            map[string]string
 	CreationTimestamp time.Time
 	NetworkInterfaces []struct {
+		Network       string
 		NetworkIP     string
 		AccessConfigs []struct {
 			Name  string
@@ -71,7 +78,7 @@ func (jsonVM *jsonVM) toVM() *vm.VM {
 	}
 
 	// Extract network information
-	var publicIP, privateIP string
+	var publicIP, privateIP, vpc string
 	if len(jsonVM.NetworkInterfaces) == 0 {
 		vmErrors = append(vmErrors, vm.ErrBadNetwork)
 	} else {
@@ -80,6 +87,7 @@ func (jsonVM *jsonVM) toVM() *vm.VM {
 			vmErrors = append(vmErrors, vm.ErrBadNetwork)
 		} else {
 			publicIP = jsonVM.NetworkInterfaces[0].AccessConfigs[0].NatIP
+			vpc = jsonVM.NetworkInterfaces[0].Network
 		}
 	}
 
@@ -89,15 +97,20 @@ func (jsonVM *jsonVM) toVM() *vm.VM {
 	zone := zones[len(zones)-1]
 
 	return &vm.VM{
-		Name:      jsonVM.Name,
-		CreatedAt: jsonVM.CreationTimestamp,
-		Errors:    vmErrors,
-		DNS:       fmt.Sprintf("%s.%s.%s", jsonVM.Name, zone, project),
-		Provider:  ProviderName,
-		Lifetime:  lifetime,
-		PrivateIP: privateIP,
-		PublicIP:  publicIP,
-		Zone:      zone,
+		Name:       jsonVM.Name,
+		CreatedAt:  jsonVM.CreationTimestamp,
+		Errors:     vmErrors,
+		DNS:        fmt.Sprintf("%s.%s.%s", jsonVM.Name, zone, project),
+		Lifetime:   lifetime,
+		PrivateIP:  privateIP,
+		Provider:   ProviderName,
+		ProviderID: jsonVM.Name,
+		PublicIP:   publicIP,
+		// N.B. gcloud uses the local username to log into instances rather
+		// than the username on the authenticated Google account.
+		RemoteUser: config.OSUser.Username,
+		VPC:        vpc,
+		Zone:       zone,
 	}
 }
 

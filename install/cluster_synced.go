@@ -41,6 +41,7 @@ type SyncedCluster struct {
 	VMs        []string
 	Users      []string
 	Localities []string
+	VPCs       []string
 	// all other fields are populated in newCluster.
 	Nodes   []int
 	LoadGen int

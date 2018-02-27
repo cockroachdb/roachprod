@@ -39,12 +39,10 @@ func syncHosts(cloud *cloud.Cloud) error {
 
 		// Align columns left and separate with at least two spaces.
 		tw := tabwriter.NewWriter(file, 0, 8, 2, ' ', 0)
-		tw.Write([]byte("# user@host\tlocality\n"))
+		tw.Write([]byte("# user@host\tlocality\tvpcId\n"))
 		for _, vm := range c.VMs {
-			// N.B. gcloud uses the local username to log into instances rather
-			// than the username on the authenticated Google account.
 			tw.Write([]byte(fmt.Sprintf(
-				"%s@%s\t%s\n", config.OSUser.Username, vm.PublicIP, vm.Locality())))
+				"%s@%s\t%s\t%s\n", vm.RemoteUser, vm.PublicIP, vm.Locality(), vm.VPC)))
 		}
 		if err := tw.Flush(); err != nil {
 			return errors.Wrapf(err, "problem writing file %s", filename)
@@ -78,7 +76,7 @@ func gcHostsFiles(cloud *cloud.Cloud) error {
 }
 
 func newInvalidHostsLineErr(line string) error {
-	return fmt.Errorf("invalid hosts line, expected <username>@<host> [locality], got %q", line)
+	return fmt.Errorf("invalid hosts line, expected <username>@<host> [locality] [vpcId], got %q", line)
 }
 
 func loadClusters() error {
@@ -105,17 +103,19 @@ func loadClusters() error {
 		}
 
 		for _, l := range lines {
+			// We'll consume the fields as we go along
 			fields := strings.Fields(l)
 			if len(fields) == 0 {
 				continue
 			} else if len(fields[0]) > 0 && fields[0][0] == '#' {
 				// Comment line.
 				continue
-			} else if len(fields) > 2 {
+			} else if len(fields) > 3 {
 				return newInvalidHostsLineErr(l)
 			}
 
 			parts := strings.Split(fields[0], "@")
+			fields = fields[1:]
 			var n, u string
 			if len(parts) == 1 {
 				u = config.OSUser.Username
@@ -127,14 +127,26 @@ func loadClusters() error {
 				return newInvalidHostsLineErr(l)
 			}
 
-			var l string
-			if len(fields) == 2 {
-				l = fields[1]
+			var locality string
+			if len(fields) > 0 {
+				locality = fields[0]
+				fields = fields[1:]
+			}
+
+			var vpc string
+			if len(fields) > 0 {
+				vpc = fields[0]
+				fields = fields[1:]
+			}
+
+			if len(fields) > 0 {
+				return newInvalidHostsLineErr(l)
 			}
 
 			c.VMs = append(c.VMs, n)
 			c.Users = append(c.Users, u)
-			c.Localities = append(c.Localities, l)
+			c.Localities = append(c.Localities, locality)
+			c.VPCs = append(c.VPCs, vpc)
 		}
 		install.Clusters[file.Name()] = c
 	}
