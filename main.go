@@ -62,6 +62,7 @@ var (
 	nodeEnv        = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
 	nodeArgs       []string
 	external       = false
+	adminurlOpen   = false
 )
 
 func sortedClusters() []string {
@@ -932,8 +933,9 @@ var pgurlCmd = &cobra.Command{
 }
 
 var adminurlCmd = &cobra.Command{
-	Use:   "adminurl <cluster>",
-	Short: "generate admin UI URLs for the nodes in a cluster\n",
+	Use:     "adminurl <cluster>",
+	Aliases: []string{"admin", "adminui"},
+	Short:   "generate admin UI URLs for the nodes in a cluster\n",
 	Long: `Generate admin UI URLs for the nodes in a cluster.
 `,
 	Args: cobra.ExactArgs(1),
@@ -950,10 +952,22 @@ var adminurlCmd = &cobra.Command{
 			if c.Secure {
 				scheme = "https"
 			}
-			fmt.Printf("%s://%s:%d/\n", scheme, ip, port)
+			url := fmt.Sprintf("%s://%s:%d/", scheme, ip, port)
+			if adminurlOpen {
+				if err := exec.Command("open", url).Run(); err != nil {
+					return err
+				}
+			} else {
+				fmt.Println(url)
+			}
 		}
 		return nil
 	}),
+}
+
+func init() {
+	adminurlCmd.Flags().BoolVar(&adminurlOpen, `open`, false,
+		`Use OSX's 'open' to launch the url in a browser.`)
 }
 
 var webCmd = &cobra.Command{
