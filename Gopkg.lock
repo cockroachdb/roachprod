@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  name = "github.com/gorilla/websocket"
+  packages = ["."]
+  revision = "ea4d1f681babbce9545c9c5f3d5194a789c89f5b"
+  version = "v1.2.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/hashicorp/go-version"
   packages = ["."]
@@ -12,6 +18,12 @@
   packages = ["."]
   revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
   version = "v1.0"
+
+[[projects]]
+  name = "github.com/nlopes/slack"
+  packages = ["."]
+  revision = "8ab4d0b364ef1e9af5d102531da20d5ec902b6c4"
+  version = "v0.2.0"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -34,7 +46,17 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["curve25519","ed25519","ed25519/internal/edwards25519","internal/chacha20","poly1305","ssh","ssh/agent","ssh/knownhosts","ssh/terminal"]
+  packages = [
+    "curve25519",
+    "ed25519",
+    "ed25519/internal/edwards25519",
+    "internal/chacha20",
+    "poly1305",
+    "ssh",
+    "ssh/agent",
+    "ssh/knownhosts",
+    "ssh/terminal"
+  ]
   revision = "0efb9460aaf800c6376acf625be2853bceac2e06"
 
 [[projects]]
@@ -52,24 +74,15 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/sys"
-  packages = ["unix","windows"]
+  packages = [
+    "unix",
+    "windows"
+  ]
   revision = "37707fdb30a5b38865cfb95e5aab41707daec7fd"
-
-[[projects]]
-  branch = "v3"
-  name = "gopkg.in/alexcesaro/quotedprintable.v3"
-  packages = ["."]
-  revision = "2caba252f4dc53eaf6b553000885530023f54623"
-
-[[projects]]
-  branch = "v2"
-  name = "gopkg.in/gomail.v2"
-  packages = ["."]
-  revision = "81ebce5c23dfd25c6c67194b37d3dd3f338c98b1"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "c46b3bc4a2422bb659b3b08f533c1a331d948a8f06a402f01c195533ddeab9ce"
+  inputs-digest = "73696b4d68ede6fd0d48c405c815e3452a9f24e4c348093676a00eb476828d30"
   solver-name = "gps-cdcl"
   solver-version = 1

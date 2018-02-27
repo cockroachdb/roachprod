@@ -49,8 +49,8 @@ destroy the cluster.
 var (
 	numNodes       int
 	username       string
+	dryrun         bool
 	destroyAfter   time.Duration
-	trackingFile   string
 	extendLifetime time.Duration
 	listDetails    bool
 	clusterType    = "cockroach"
@@ -526,7 +526,7 @@ hourly by a cronjob so it is not necessary to run manually.
 		if err != nil {
 			return err
 		}
-		return cld.GCClusters(cloud, trackingFile, destroyAfter)
+		return cld.GCClusters(cloud, dryrun, destroyAfter)
 	}),
 }
 
@@ -1009,15 +1009,11 @@ func main() {
 	listCmd.Flags().BoolVarP(&listDetails,
 		"details", "d", false, "Show cluster details")
 
-	gcCmd.Flags().StringVar(&config.GCEmailOpts.From, "email-from", "", "Address of the sender")
-	gcCmd.Flags().StringVar(&config.GCEmailOpts.Host, "email-host", "", "SMTP host")
-	gcCmd.Flags().IntVar(&config.GCEmailOpts.Port, "email-port", 587, "SMTP port")
-	gcCmd.Flags().StringVar(&config.GCEmailOpts.User, "email-user", "", "SMTP user")
-	gcCmd.Flags().StringVar(&config.GCEmailOpts.Password, "email-password", "", "SMTP password")
+	gcCmd.Flags().BoolVarP(
+		&dryrun, "dry-run", "n", dryrun, "dry run (don't perform any actions)")
+	gcCmd.Flags().StringVar(&config.SlackToken, "slack-token", "", "Slack bot token")
 	gcCmd.Flags().DurationVar(&destroyAfter,
 		"destroy-after", 6*time.Hour, "Destroy when this much time past expiration")
-	gcCmd.Flags().StringVar(&trackingFile,
-		"tracking-file", "roachprod.tracking.txt", "Tracking file to avoid duplicate emails")
 
 	pgurlCmd.Flags().BoolVar(
 		&external, "external", false, "return pgurls for external connections")

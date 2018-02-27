@@ -6,9 +6,9 @@ import (
 )
 
 var (
-	Binary      = "./cockroach"
-	GCEmailOpts EmailOpts
-	OSUser      *user.User
+	Binary     = "./cockroach"
+	SlackToken string
+	OSUser     *user.User
 )
 
 func init() {
@@ -17,15 +17,6 @@ func init() {
 	if err != nil {
 		log.Panic("Unable to determine OS user", err)
 	}
-}
-
-// EmailOpts is the set of options needed to configure the email client.
-type EmailOpts struct {
-	From     string
-	Host     string
-	Port     int
-	User     string
-	Password string
 }
 
 // A sentinel value used to indicate that an installation should
