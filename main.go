@@ -6,6 +6,7 @@ import (
 	"os/user"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -53,6 +54,7 @@ var (
 	destroyAfter   time.Duration
 	extendLifetime time.Duration
 	listDetails    bool
+	listMine       bool
 	clusterType    = "cockroach"
 	secure         = false
 	nodeEnv        = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
@@ -356,9 +358,14 @@ directory is removed.
 }
 
 var listCmd = &cobra.Command{
-	Use:   "list [--details]",
+	Use:   "list [--details] [ --mine | <cluster name regex> ]",
 	Short: "list all clusters",
 	Long: `List all clusters.
+
+The list command accepts an optional positional argument, which is a regular
+expression that will be matched against the cluster name pattern.  Alternatively,
+the --mine flag can be provided to list the clusters that are owned by the current
+user.
 
 The default output shows one line per cluster, including the local cluster if
 it exists:
@@ -400,15 +407,38 @@ hosts file.
 		}
 		fmt.Printf("Account: %s\n", account)
 
+		listPattern := regexp.MustCompile(".*")
+		switch len(args) {
+		case 0:
+			if listMine {
+				listPattern, err = regexp.Compile(fmt.Sprintf("^%s-", regexp.QuoteMeta(account)))
+				if err != nil {
+					return err
+				}
+			}
+		case 1:
+			if listMine {
+				return errors.New("--mine cannot be combined with a pattern")
+			}
+			listPattern, err = regexp.Compile(args[0])
+			if err != nil {
+				return errors.Wrapf(err, "could not compile regex pattern: %s", args[0])
+			}
+		default:
+			return errors.New("only a single pattern may be listed")
+		}
+
 		cloud, err := cld.ListCloud()
 		if err != nil {
 			return err
 		}
 
-		// Sort by cluster names for stable output
+		// Filter and sort by cluster names for stable output
 		var names []string
 		for name, _ := range cloud.Clusters {
-			names = append(names, name)
+			if listPattern.MatchString(name) {
+				names = append(names, name)
+			}
 		}
 		sort.Strings(names)
 
@@ -1008,6 +1038,8 @@ func main() {
 
 	listCmd.Flags().BoolVarP(&listDetails,
 		"details", "d", false, "Show cluster details")
+	listCmd.Flags().BoolVarP(&listMine,
+		"mine", "m", false, "Show only clusters belonging to the current user")
 
 	gcCmd.Flags().BoolVarP(
 		&dryrun, "dry-run", "n", dryrun, "dry run (don't perform any actions)")
