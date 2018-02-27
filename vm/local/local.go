@@ -90,12 +90,15 @@ func (p *Provider) List() (ret vm.List, _ error) {
 		now := time.Now()
 		for range sc.VMs {
 			ret = append(ret, vm.VM{
-				Name:      "localhost",
-				CreatedAt: now,
-				Lifetime:  time.Hour,
-				PrivateIP: "127.0.0.1",
-				PublicIP:  "127.0.0.1",
-				Zone:      config.Local,
+				Name:       "localhost",
+				CreatedAt:  now,
+				Lifetime:   time.Hour,
+				PrivateIP:  "127.0.0.1",
+				Provider:   ProviderName,
+				ProviderID: config.Local,
+				PublicIP:   "127.0.0.1",
+				RemoteUser: config.OSUser.Username,
+				Zone:       config.Local,
 			})
 		}
 	}

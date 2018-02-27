@@ -41,10 +41,8 @@ func syncHosts(cloud *cloud.Cloud) error {
 		tw := tabwriter.NewWriter(file, 0, 8, 2, ' ', 0)
 		tw.Write([]byte("# user@host\tlocality\n"))
 		for _, vm := range c.VMs {
-			// N.B. gcloud uses the local username to log into instances rather
-			// than the username on the authenticated Google account.
 			tw.Write([]byte(fmt.Sprintf(
-				"%s@%s\t%s\n", config.OSUser.Username, vm.PublicIP, vm.Locality())))
+				"%s@%s\t%s\n", vm.RemoteUser, vm.PublicIP, vm.Locality())))
 		}
 		if err := tw.Flush(); err != nil {
 			return errors.Wrapf(err, "problem writing file %s", filename)
