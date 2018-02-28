@@ -335,7 +335,7 @@ SET CLUSTER SETTING cluster.organization = 'Cockroach Labs - Production Testing'
 SET CLUSTER SETTING enterprise.license = '%s';"`, license)
 			out, err := session.CombinedOutput(cmd)
 			if err != nil {
-				msg = err.Error()
+				msg = "while setting cluster settings: " + err.Error()
 			} else {
 				msg = strings.TrimSpace(string(out))
 			}
