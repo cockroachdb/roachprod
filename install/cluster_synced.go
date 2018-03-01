@@ -166,7 +166,7 @@ func (c *SyncedCluster) Status() {
 
 		binary := cockroachNodeBinary(c, c.Nodes[i])
 		cmd := fmt.Sprintf(
-			"out=$(ps axeww -o ucomm -o pid -o command | awk '/ROACHPROD=(%d)/ {print $1, $2}'",
+			"out=$(ps axeww -o pid -o ucomm -o command | awk '/ROACHPROD=(%d)/ {print $2, $1}'",
 			c.Nodes[i])
 		cmd += ` | sort | uniq);
 vers=$(` + binary + ` version 2>/dev/null | awk '/Build Tag:/ {print $NF}')
