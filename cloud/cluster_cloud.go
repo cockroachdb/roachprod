@@ -58,6 +58,22 @@ type CloudCluster struct {
 	VMs       vm.List
 }
 
+// Clouds returns the names of all of the various cloud providers used
+// by the VMs in the cluster.
+func (c *CloudCluster) Clouds() []string {
+	present := make(map[string]bool)
+	for _, m := range c.VMs {
+		present[m.Provider] = true
+	}
+
+	var ret []string
+	for provider := range present {
+		ret = append(ret, provider)
+	}
+	sort.Strings(ret)
+	return ret
+}
+
 func (c *CloudCluster) ExpiresAt() time.Time {
 	return c.CreatedAt.Add(c.Lifetime)
 }
@@ -76,7 +92,7 @@ func (c *CloudCluster) String() string {
 }
 
 func (c *CloudCluster) PrintDetails() {
-	fmt.Printf("%s: ", c.Name)
+	fmt.Printf("%s: %s ", c.Name, c.Clouds())
 	if !c.IsLocal() {
 		l := c.LifetimeRemaining().Round(time.Second)
 		if l <= 0 {
