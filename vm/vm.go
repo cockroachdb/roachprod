@@ -24,10 +24,20 @@ type VM struct {
 	// The provider-internal DNS name for the VM instance
 	DNS string
 	// The name of the cloud provider that hosts the VM instance
-	Provider  string
-	PrivateIP string
-	PublicIP  string
-	Zone      string
+	Provider string
+	// The provider-specific id for the instance.  This may or may not be the same as Name, depending
+	// on whether or not the cloud provider automatically assigns VM identifiers.
+	ProviderID string
+	PrivateIP  string
+	PublicIP   string
+	// The username that should be used to connect to the VM.
+	RemoteUser string
+	// The VPC value defines an equivalency set for VMs that can route
+	// to one another via private IP addresses.  We use this later on
+	// when determining whether or not cluster member should advertise
+	// their public or private IP.
+	VPC  string
+	Zone string
 }
 
 // Error values for VM.Error
@@ -44,6 +54,8 @@ func (vm *VM) IsLocal() bool {
 	return vm.Zone == config.Local
 }
 
+// Locality returns the cloud, region, and zone for the VM.  We want to include the cloud, since
+// GCE and AWS use similarly-named regions (e.g. us-east-1)
 func (vm *VM) Locality() string {
 	var region string
 	if vm.IsLocal() {
@@ -53,7 +65,7 @@ func (vm *VM) Locality() string {
 	} else {
 		log.Fatalf("unable to parse region from zone %q", vm.Zone)
 	}
-	return fmt.Sprintf("region=%s,zone=%s", region, vm.Zone)
+	return fmt.Sprintf("cloud=%s,region=%s,zone=%s", vm.Provider, region, vm.Zone)
 }
 
 type List []VM
@@ -67,6 +79,15 @@ func (vl List) Names() []string {
 	ret := make([]string, len(vl))
 	for i, vm := range vl {
 		ret[i] = vm.Name
+	}
+	return ret
+}
+
+// ProviderIDs extracts all ProviderID values from the List.
+func (vl List) ProviderIDs() []string {
+	ret := make([]string, len(vl))
+	for i, vm := range vl {
+		ret[i] = vm.ProviderID
 	}
 	return ret
 }
@@ -137,12 +158,15 @@ func FanOut(list List, action func(Provider, List) error) error {
 
 	var g errgroup.Group
 	for name, vms := range m {
+		// capture loop variables
+		n := name
+		v := vms
 		g.Go(func() error {
-			p, ok := Providers[name]
+			p, ok := Providers[n]
 			if !ok {
-				return errors.Errorf("unknown provider name: %s", name)
+				return errors.Errorf("unknown provider name: %s", n)
 			}
-			return action(p, vms)
+			return action(p, v)
 		})
 	}
 
@@ -208,8 +232,10 @@ func ForProvider(named string, action func(Provider) error) error {
 func ProvidersParallel(named []string, action func(Provider) error) error {
 	var g errgroup.Group
 	for _, name := range named {
+		// capture loop variable
+		n := name
 		g.Go(func() error {
-			return ForProvider(name, action)
+			return ForProvider(n, action)
 		})
 	}
 	return g.Wait()

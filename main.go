@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/roachprod/ssh"
 	"github.com/cockroachdb/roachprod/ui"
 	"github.com/cockroachdb/roachprod/vm"
+	_ "github.com/cockroachdb/roachprod/vm/aws"
 	"github.com/cockroachdb/roachprod/vm/gce"
 	"github.com/cockroachdb/roachprod/vm/local"
 	"github.com/pkg/errors"
@@ -1052,7 +1053,7 @@ func main() {
 		"nodes", "n", 4, "Total number of nodes, distributed across all clouds")
 	createCmd.Flags().StringSliceVarP(&createVMOpts.VMProviders,
 		"clouds", "c", []string{gce.ProviderName},
-		"The cloud provider(s) to use when creating new vm instances")
+		fmt.Sprintf("The cloud provider(s) to use when creating new vm instances: %s", vm.AllProviderNames()))
 	createCmd.Flags().BoolVar(&createVMOpts.GeoDistributed,
 		"geo", false, "Create geo-distributed cluster")
 	// Allow each Provider to inject additional configuration flags
