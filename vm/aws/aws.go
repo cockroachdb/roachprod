@@ -32,6 +32,7 @@ type providerOpts struct {
 	AMI            []string
 	MachineType    string
 	SecurityGroups []string
+	SSDMachineType string
 	Subnets        []string
 	RemoteUserName string
 }
@@ -54,6 +55,11 @@ func (o *providerOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
 	// m5.xlarge is a 4core, 16Gb instance, approximately equal to a GCE n1-standard-4
 	flags.StringVar(&o.MachineType, ProviderName+"-machine-type", "m5.xlarge",
 		"Machine type (see https://aws.amazon.com/ec2/instance-types/)")
+
+	// The m5 devices only support EBS volumes, so we need a different instance type
+	// for directly-attached SSD support. This is 4 core, 30GB ram, 1T ssd.
+	flags.StringVar(&o.SSDMachineType, ProviderName+"-machine-type-ssd", "i3.xlarge",
+		"Machine type for --local-ssd (see https://aws.amazon.com/ec2/instance-types/)")
 
 	// The subnet actually controls placement into a particular AZ
 	flags.StringSliceVar(&o.Subnets, ProviderName+"-subnet",
@@ -447,6 +453,13 @@ func (p *Provider) runInstance(name string, zone string, opts vm.CreateOpts) err
 		return err
 	}
 
+	var machineType string
+	if opts.UseLocalSSD {
+		machineType = p.opts.SSDMachineType
+	} else {
+		machineType = p.opts.MachineType
+	}
+
 	sgMap, err := splitMap(p.opts.SecurityGroups)
 	if err != nil {
 		return err
@@ -483,17 +496,24 @@ func (p *Provider) runInstance(name string, zone string, opts vm.CreateOpts) err
 	args := []string{
 		"ec2", "run-instances",
 		"--associate-public-ip-address",
-		// Size is measured in GB.  gp2 type derives guaranteed iops from size.
-		"--block-device-mapping", "DeviceName=/dev/sdd,Ebs={VolumeSize=500,VolumeType=gp2,DeleteOnTermination=true}",
 		"--count", "1",
 		"--image-id", amiId,
-		"--instance-type", p.opts.MachineType,
+		"--instance-type", machineType,
 		"--key-name", keyName,
 		"--region", region,
 		"--security-group-ids", sgId,
 		"--subnet-id", subnetId,
 		"--tag-specifications", tagSpecs,
 		"--user-data", awsStartupScript,
+	}
+
+	// The local NVMe devices are automatically mapped.  Otherwise, we need to map an EBS data volume.
+	if !opts.UseLocalSSD {
+		args = append(args,
+			"--block-device-mapping",
+			// Size is measured in GB.  gp2 type derives guaranteed iops from size.
+			"DeviceName=/dev/sdd,Ebs={VolumeSize=500,VolumeType=gp2,DeleteOnTermination=true}",
+		)
 	}
 
 	return runJSONCommand(args, &data)
