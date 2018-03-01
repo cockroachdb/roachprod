@@ -22,8 +22,10 @@ func init() {
 	if _, err := exec.LookPath("aws"); err == nil {
 		vm.Providers[ProviderName] = &Provider{}
 	} else {
-		log.Printf("please install the AWS CLI utilities " +
-			"(https://docs.aws.amazon.com/cli/latest/userguide/installing.html)")
+		// TODO(bob): This breaks the use of `roachprod pgurl --external` to
+		// power roachtest's `(*cluster).Conn` and was failing the nightlies.
+		// log.Printf("please install the AWS CLI utilities " +
+		// 	"(https://docs.aws.amazon.com/cli/latest/userguide/installing.html)")
 	}
 }
 
