@@ -1,8 +1,13 @@
 package cloud
 
 import (
+	"encoding/base64"
 	"fmt"
+	"hash/fnv"
+	"io/ioutil"
 	"log"
+	"os"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -27,6 +32,33 @@ func (s *status) add(c *CloudCluster, now, destroyDeadline time.Time) {
 	} else {
 		s.warn = append(s.warn, c)
 	}
+}
+
+// messageHash computes a base64-encoded hash value to show whether
+// or not two status values would result in a duplicate
+// notification to a user.
+func (s *status) notificationHash() string {
+	// Use stdlib hash function, since we don't need any crypto guarantees
+	hash := fnv.New32a()
+
+	for i, list := range [][]*CloudCluster{s.good, s.warn, s.destroy} {
+		hash.Write([]byte{byte(i)})
+
+		var data []string
+		for _, c := range list {
+			// Deduplicate by cluster name and expiration time
+			data = append(data, fmt.Sprintf("%s %s", c.Name, c.ExpiresAt()))
+		}
+		// Ensure results are stable
+		sort.Strings(data)
+
+		for _, d := range data {
+			hash.Write([]byte(d))
+		}
+	}
+
+	bytes := hash.Sum(make([]byte, 0, hash.BlockSize()))
+	return base64.StdEncoding.EncodeToString(bytes)
 }
 
 func makeSlackClient() *slack.Client {
@@ -78,6 +110,18 @@ func postStatus(
 ) {
 	if client == nil || channel == "" {
 		return
+	}
+
+	// Debounce messages, unless we have badVMs since that indicates
+	// a problem that needs manual intervention
+	if len(badVMs) == 0 {
+		send, err := shouldSend(channel, s)
+		if err != nil {
+			log.Printf("unable to deduplicate notification: %s", err.Error())
+		}
+		if !send {
+			return
+		}
 	}
 
 	makeStatusFields := func(clusters []*CloudCluster) []slack.AttachmentField {
@@ -171,6 +215,29 @@ func postError(client *slack.Client, channel string, err error) {
 	if err != nil {
 		log.Println(err)
 	}
+}
+
+// shouldSend determines whether or not the given status was previously
+// sent to the channel.  The error returned by this function is
+// advisory; the boolean value is always a reasonable behavior.
+func shouldSend(channel string, status *status) (bool, error) {
+	hashDir := os.ExpandEnv(path.Join("${HOME}", ".roachprod", "slack"))
+	if err := os.MkdirAll(hashDir, 0755); err != nil {
+		return true, err
+	}
+	hashPath := os.ExpandEnv(path.Join(hashDir, "notification-"+channel))
+	fileBytes, err := ioutil.ReadFile(hashPath)
+	if err != nil && !os.IsNotExist(err) {
+		return true, err
+	}
+	oldHash := string(fileBytes)
+	newHash := status.notificationHash()
+
+	if newHash == oldHash {
+		return false, nil
+	}
+
+	return true, ioutil.WriteFile(hashPath, []byte(newHash), 0644)
 }
 
 // GCClusters checks all cluster to see if they should be deleted. It only
