@@ -54,6 +54,8 @@ func runCommand(args []string) error {
 
 // runJSONCommand invokes an aws command and parses the json output.
 func runJSONCommand(args []string, parsed interface{}) error {
+	// force json output in case the user has overridden the default behavior
+	args = append(args[:len(args):len(args)], "--output", "json")
 	cmd := exec.Command("aws", args...)
 
 	rawJSON, err := cmd.Output()
