@@ -54,14 +54,18 @@ func runCommand(args []string) error {
 
 // runJSONCommand invokes an aws command and parses the json output.
 func runJSONCommand(args []string, parsed interface{}) error {
-	cmd := exec.Command("aws", args...)
+	// force json output in case the user has overridden the default behavior
+	argCopy := make([]string, len(args), len(args)+2)
+	copy(argCopy, args)
+	argCopy = append(argCopy, "--output", "json")
+	cmd := exec.Command("aws", argCopy...)
 
 	rawJSON, err := cmd.Output()
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			log.Println(string(exitErr.Stderr))
 		}
-		return errors.Wrapf(err, "failed to run: aws %s", strings.Join(args, " "))
+		return errors.Wrapf(err, "failed to run: aws %s", strings.Join(argCopy, " "))
 	}
 
 	if err := json.Unmarshal(rawJSON, &parsed); err != nil {
