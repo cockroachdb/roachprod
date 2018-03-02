@@ -275,7 +275,6 @@ Local Clusters
 					out, err := cmd.CombinedOutput()
 					if err != nil {
 						log.Printf("could not clear ssh key for hostname %s:\n%s", v.PublicIP, string(out))
-						return err
 					}
 				}
 
