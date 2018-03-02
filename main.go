@@ -174,6 +174,7 @@ func wrap(f func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Comma
 		err := f(cmd, args)
 		if err != nil {
 			cmd.Println("Error: ", err.Error())
+			os.Exit(1)
 		}
 	}
 }
