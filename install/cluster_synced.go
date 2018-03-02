@@ -142,7 +142,10 @@ func (c *SyncedCluster) Wipe() {
 
 		var cmd string
 		if c.IsLocal() {
-			cmd = fmt.Sprintf(`rm -fr ${HOME}/local/%d/{certs*,data,logs} ;`, c.Nodes[i])
+			// Not all shells like brace expansion, so we'll do it here
+			for _, dir := range []string{"certs*", "data", "logs"} {
+				cmd += fmt.Sprintf(`rm -fr ${HOME}/local/%d/%s ;`, c.Nodes[i], dir)
+			}
 		} else {
 			cmd = `find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; ;
 rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo-data} \; ;
