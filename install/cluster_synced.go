@@ -684,9 +684,57 @@ func (c *SyncedCluster) pgurls(nodes []int) map[int]string {
 	return m
 }
 
+const splitScript = `
+ if (path to frontmost application as text) does not contain "iTerm" then
+        return "Can't multi-ssh without iTerm 2 as the active terminal."
+ end if
+ tell application "iTerm2"
+        activate
+        tell (create window with default profile)
+            set pane_count to %d
+            set col_count to round ((pane_count) ^ 0.5) rounding up
+            set row_count to round ((pane_count) / col_count) rounding up
+            repeat row_count - 1 times
+                tell current session
+                    split horizontally with default profile
+                end tell
+            end repeat
+            set cur to row_count
+            repeat row_count times
+                repeat col_count - 1 times
+                    if cur is equal to (pane_count) then
+                        exit repeat
+                    end if
+                    tell current session
+                        split vertically with default profile
+                    end tell
+                    set cur to cur + 1
+                end repeat
+                tell application "System Events" to tell process "iTerm2" to click menu item "Select Pane Below" of menu 1 of menu item "Select Split Pane" of menu 1 of menu bar item "Window" of menu bar 1
+            end repeat
+            tell current tab
+                repeat with x from 1 to pane_count
+                   tell item x of sessions to write text %s
+                end repeat
+            end tell
+        end tell
+    end tell
+return`
+
 func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 	if len(c.Nodes) != 1 {
-		return fmt.Errorf("invalid number of nodes for ssh: %d", len(c.Nodes))
+		cmd := fmt.Sprintf(`"roachprod ssh %s:" & x`, c.Name)
+		script := fmt.Sprintf(splitScript, len(c.Nodes), cmd)
+		allArgs := []string{
+			"osascript",
+			"-e",
+			script,
+		}
+		osascriptPath, err := exec.LookPath("osascript")
+		if err != nil {
+			return err
+		}
+		return syscall.Exec(osascriptPath, allArgs, os.Environ())
 	}
 
 	allArgs := []string{
