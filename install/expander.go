@@ -1,59 +1,92 @@
 package install
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
 
 var parameterRe = regexp.MustCompile(`{[^}]*}`)
-var pgurlRe = regexp.MustCompile(`{pgurl(:[-0-9]+)?}`)
+var pgURLRe = regexp.MustCompile(`{pgurl(:[-,0-9]+)?}`)
+var pgPortRe = regexp.MustCompile(`{pgport(:[-,0-9]+)?}`)
 var storeDirRe = regexp.MustCompile(`{store-dir}`)
 
 type expander struct {
-	urls map[int]string
+	pgURLs  map[int]string
+	pgPorts map[int]string
 }
 
-func (e *expander) maybeExpandPgurl(c *SyncedCluster, s string) (string, bool) {
-	m := pgurlRe.FindStringSubmatch(s)
-	if m == nil {
-		return s, false
-	}
-
-	if m[1] == "" {
-		m[1] = "all"
+func (e *expander) maybeExpandMap(c *SyncedCluster, m map[int]string, nodeSpec string) (string, bool) {
+	if nodeSpec == "" {
+		nodeSpec = "all"
 	} else {
-		m[1] = m[1][1:]
+		nodeSpec = nodeSpec[1:]
 	}
 
-	if e.urls == nil {
-		e.urls = c.pgurls(allNodes(len(c.VMs)))
-	}
-
-	nodes, err := ListNodes(m[1], len(c.VMs))
+	nodes, err := ListNodes(nodeSpec, len(c.VMs))
 	if err != nil {
 		return err.Error(), true
 	}
 
 	var result []string
 	for _, i := range nodes {
-		if url, ok := e.urls[i]; ok {
-			result = append(result, url)
+		if s, ok := m[i]; ok {
+			result = append(result, s)
 		}
 	}
 	return strings.Join(result, " "), true
 }
 
+func (e *expander) maybeExpandPgURL(c *SyncedCluster, s string) (string, bool) {
+	m := pgURLRe.FindStringSubmatch(s)
+	if m == nil {
+		return s, false
+	}
+
+	if e.pgURLs == nil {
+		e.pgURLs = c.pgurls(allNodes(len(c.VMs)))
+	}
+
+	return e.maybeExpandMap(c, e.pgURLs, m[1])
+}
+
+func (e *expander) maybeExpandPgPort(c *SyncedCluster, s string) (string, bool) {
+	m := pgPortRe.FindStringSubmatch(s)
+	if m == nil {
+		return s, false
+	}
+
+	if e.pgPorts == nil {
+		e.pgPorts = make(map[int]string, len(c.VMs))
+		for _, i := range allNodes(len(c.VMs)) {
+			e.pgPorts[i] = fmt.Sprint(c.Impl.NodePort(c, i))
+		}
+	}
+
+	return e.maybeExpandMap(c, e.pgPorts, m[1])
+}
+
 func (e *expander) maybeExpandStoreDir(c *SyncedCluster, s string) (string, bool) {
+	if !storeDirRe.MatchString(s) {
+		return s, false
+	}
 	return c.Impl.NodeDir(c, c.Nodes[0]), true
 }
 
 func (e *expander) expand(c *SyncedCluster, arg string) string {
 	return parameterRe.ReplaceAllStringFunc(arg, func(s string) string {
-		s, expanded := e.maybeExpandPgurl(c, s)
-		if expanded {
-			return s
+		type expanderFunc func(*SyncedCluster, string) (string, bool)
+		expanders := []expanderFunc{
+			e.maybeExpandPgURL,
+			e.maybeExpandPgPort,
+			e.maybeExpandStoreDir,
 		}
-		s, _ = e.maybeExpandStoreDir(c, s)
+		for _, f := range expanders {
+			s, expanded := f(c, s)
+			if expanded {
+				return s
+			}
+		}
 		return s
 	})
 }
