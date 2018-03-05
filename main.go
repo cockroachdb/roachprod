@@ -52,6 +52,7 @@ destroy the cluster.
 
 var (
 	numNodes       int
+	numRacks       int
 	username       string
 	dryrun         bool
 	extendLifetime time.Duration
@@ -106,6 +107,15 @@ Hint: use "roachprod sync" to update the list of available clusters.
 	switch clusterType {
 	case "cockroach":
 		c.Impl = install.Cockroach{}
+		if numRacks > 0 {
+			for i := range c.Localities {
+				rack := fmt.Sprintf("rack=%d", i%numRacks)
+				if c.Localities[i] != "" {
+					rack = "," + rack
+				}
+				c.Localities[i] += rack
+			}
+		}
 	case "cassandra":
 		c.Impl = install.Cassandra{}
 	default:
@@ -1074,6 +1084,9 @@ func main() {
 
 	sshCmd.Flags().BoolVar(
 		&secure, "secure", false, "use a secure cluster")
+
+	startCmd.Flags().IntVarP(&numRacks,
+		"racks", "r", 0, "the number of racks to partition the nodes into")
 
 	testCmd.Flags().DurationVarP(
 		&duration, "duration", "d", 5*time.Minute, "the duration to run each test")
