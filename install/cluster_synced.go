@@ -468,6 +468,10 @@ func (c *SyncedCluster) Put(src, dest string) {
 			defer wg.Done()
 
 			if c.IsLocal() {
+				if _, err := os.Stat(src); err != nil {
+					results <- result{i, err}
+					return
+				}
 				from, err := filepath.Abs(src)
 				if err != nil {
 					results <- result{i, err}
