@@ -261,11 +261,17 @@ Local Clusters
 		}
 
 		fmt.Printf("Creating cluster %s with %d nodes\n", clusterName, numNodes)
-		if err := cld.CreateCluster(clusterName, numNodes, createVMOpts); err != nil {
-			return err
+		if createErr := cld.CreateCluster(clusterName, numNodes, createVMOpts); createErr == nil {
+			fmt.Println("OK")
+		} else if clusterName == config.Local {
+			return createErr
+		} else {
+			fmt.Fprintf(os.Stderr, "Unable to create cluster:\n%s\nCleaning up...\n", createErr)
+			if err := cleanupFailedCreate(clusterName); err != nil {
+				fmt.Fprintf(os.Stderr, "Error while cleaning up partially-created cluster: %s\n", err)
+			}
+			os.Exit(1)
 		}
-
-		fmt.Println("OK")
 
 		if clusterName != config.Local {
 			{
@@ -321,6 +327,20 @@ Local Clusters
 
 		return nil
 	}),
+}
+
+func cleanupFailedCreate(clusterName string) error {
+	cloud, err := cld.ListCloud()
+	if err != nil {
+		return err
+	}
+	c, ok := cloud.Clusters[clusterName]
+	if !ok {
+		// If the cluster doesn't exist, we didn't manage to create any VMs
+		// before failing. Not an error.
+		return nil
+	}
+	return cld.DestroyCluster(c)
 }
 
 var destroyCmd = &cobra.Command{
