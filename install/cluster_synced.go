@@ -48,6 +48,7 @@ type SyncedCluster struct {
 	Secure  bool
 	Env     string
 	Args    []string
+	Tag     string
 	Impl    ClusterImpl
 }
 
@@ -124,8 +125,8 @@ func (c *SyncedCluster) Stop() {
 		// NB: the awkward-looking `awk` invocation serves to avoid having the
 		// awk process match its own output from `ps`.
 		cmd := fmt.Sprintf(
-			"ps axeww -o pid -o command | awk '/ROACHPROD=(true|%d)/ { print $1 }' | xargs kill -9 || true;",
-			c.Nodes[i])
+			"ps axeww -o pid -o command | awk '/ROACHPROD=(true|%d%s) / { print $1 }' | xargs kill -9 || true;",
+			c.Nodes[i], c.escapedTag())
 		return session.CombinedOutput(cmd)
 	})
 }
@@ -169,8 +170,8 @@ func (c *SyncedCluster) Status() {
 
 		binary := cockroachNodeBinary(c, c.Nodes[i])
 		cmd := fmt.Sprintf(
-			"out=$(ps axeww -o pid -o ucomm -o command | awk '/ROACHPROD=(%d)/ {print $2, $1}'",
-			c.Nodes[i])
+			"out=$(ps axeww -o pid -o ucomm -o command | awk '/ROACHPROD=(%d%s) / {print $2, $1}'",
+			c.Nodes[i], c.escapedTag())
 		cmd += ` | sort | uniq);
 vers=$(` + binary + ` version 2>/dev/null | awk '/Build Tag:/ {print $NF}')
 if [ -n "${out}" -a -n "${vers}" ]; then
@@ -295,7 +296,7 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		}
 		defer session.Close()
 
-		nodeCmd := fmt.Sprintf("export ROACHPROD=%d && ", nodes[i]) + cmd
+		nodeCmd := fmt.Sprintf("export ROACHPROD=%d%s && ", nodes[i], c.Tag) + cmd
 		if c.IsLocal() {
 			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], cmd)
 		}
@@ -434,7 +435,7 @@ func (c *SyncedCluster) RunLoad(cmd string, stdout, stderr io.Writer) error {
 	for i, ip := range ips {
 		urls = append(urls, c.Impl.NodeURL(c, ip, c.Impl.NodePort(c, nodes[i])))
 	}
-	prefix := fmt.Sprintf("ulimit -n 16384; export ROACHPROD=%d && ", c.LoadGen)
+	prefix := fmt.Sprintf("ulimit -n 16384; export ROACHPROD=%d%s && ", c.LoadGen, c.Tag)
 	return session.Run(prefix + cmd + " " + strings.Join(urls, " "))
 }
 
@@ -704,7 +705,7 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 	}
 	allArgs = append(allArgs, sshArgs...)
 	if len(args) > 0 {
-		allArgs = append(allArgs, fmt.Sprintf("export ROACHPROD=%d ;", c.Nodes[0]))
+		allArgs = append(allArgs, fmt.Sprintf("export ROACHPROD=%d%s ;", c.Nodes[0], c.Tag))
 	}
 	if c.IsLocal() {
 		allArgs = append(allArgs, fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0]))
@@ -847,4 +848,11 @@ func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func
 		}
 		log.Fatal("command failed")
 	}
+}
+
+func (c *SyncedCluster) escapedTag() string {
+	if c.Tag == "" {
+		return ""
+	}
+	return `\` + c.Tag
 }

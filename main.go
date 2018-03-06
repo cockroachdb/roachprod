@@ -62,6 +62,7 @@ var (
 	secure         = false
 	nodeEnv        = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
 	nodeArgs       []string
+	tag            string
 	external       = false
 	adminurlOpen   = false
 )
@@ -138,6 +139,9 @@ Hint: use "roachprod sync" to update the list of available clusters.
 	c.Secure = secure
 	c.Env = nodeEnv
 	c.Args = nodeArgs
+	if tag != "" {
+		c.Tag = "/" + tag
+	}
 	return c, nil
 }
 
@@ -1112,6 +1116,13 @@ func main() {
 		&duration, "duration", "d", 5*time.Minute, "the duration to run each test")
 	testCmd.Flags().StringVarP(
 		&concurrency, "concurrency", "c", "1-64", "the concurrency to run each test")
+
+	for _, cmd := range []*cobra.Command{
+		startCmd, statusCmd, stopCmd, sshCmd,
+	} {
+		cmd.Flags().StringVar(
+			&tag, "tag", "", "the process tag")
+	}
 
 	for _, cmd := range []*cobra.Command{
 		getCmd, putCmd, runCmd, startCmd, statusCmd, stopCmd, testCmd,
