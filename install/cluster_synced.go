@@ -182,7 +182,7 @@ fi
 		out, err := session.CombinedOutput(cmd)
 		var msg string
 		if err != nil {
-			msg = err.Error()
+			msg = fmt.Sprintf("%s: %v", out, err)
 		} else {
 			msg = strings.TrimSpace(string(out))
 			if msg == "" {
@@ -380,7 +380,7 @@ func (c *SyncedCluster) CockroachVersions() map[string]int {
 		out, err := session.CombinedOutput(cmd)
 		var s string
 		if err != nil {
-			s = err.Error()
+			s = fmt.Sprintf("%s: %v", out, err)
 		} else {
 			s = strings.TrimSpace(string(out))
 		}

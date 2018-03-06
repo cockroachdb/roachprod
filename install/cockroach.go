@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/roachprod/config"
 	"github.com/cockroachdb/roachprod/ssh"
 	"github.com/hashicorp/go-version"
+	"github.com/pkg/errors"
 )
 
 var StartOpts struct {
@@ -69,7 +70,7 @@ func getCockroachVersion(c *SyncedCluster, i int, host, user string) (*version.V
 	cmd := cockroachNodeBinary(c, i) + " version"
 	out, err := session.CombinedOutput(cmd)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "%s", out)
 	}
 
 	matches := regexp.MustCompile(`(?m)^Build Tag:\s+(.*)$`).FindSubmatch(out)
@@ -169,8 +170,8 @@ mkdir -p certs
 %[1]s cert create-node localhost %[2]s --certs-dir=certs --ca-key=certs/ca.key
 tar cvf certs.tar certs
 `, cockroachNodeBinary(c, 1), strings.Join(nodeNames, " "))
-				if _, err := session.CombinedOutput(cmd); err != nil {
-					msg = err.Error()
+				if out, err := session.CombinedOutput(cmd); err != nil {
+					msg = fmt.Sprintf("%s: %v", out, err)
 				}
 				return nil, nil
 			})
@@ -225,8 +226,10 @@ tar cvf certs.tar certs
 					cmd = fmt.Sprintf(`cd ${HOME}/local/%d ; `, nodes[i])
 				}
 				cmd += `tar xf -`
-				_, err = session.CombinedOutput(cmd)
-				return nil, err
+				if out, err := session.CombinedOutput(cmd); err != nil {
+					return nil, errors.Wrapf(err, "%s", out)
+				}
+				return nil, nil
 			})
 		}
 	}
@@ -349,7 +352,7 @@ SET CLUSTER SETTING cluster.organization = 'Cockroach Labs - Production Testing'
 SET CLUSTER SETTING enterprise.license = '%s';"`, license)
 			out, err := session.CombinedOutput(cmd)
 			if err != nil {
-				msg = "while setting cluster settings: " + err.Error()
+				msg = fmt.Sprintf("%s: %v", out, err)
 			} else {
 				msg = strings.TrimSpace(string(out))
 			}
@@ -428,7 +431,7 @@ func (r Cockroach) SQL(c *SyncedCluster, args []string) error {
 
 		out, err := session.CombinedOutput(cmd)
 		if err != nil {
-			resultChan <- result{node: c.Nodes[i], output: fmt.Sprintf("err=%s,out=%s", err, out)}
+			resultChan <- result{node: c.Nodes[i], output: fmt.Sprintf("%s: %v", out, err)}
 			return out, err
 		}
 
