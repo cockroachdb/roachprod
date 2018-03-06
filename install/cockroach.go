@@ -318,7 +318,7 @@ tar cvf certs.tar certs
 		// unhelpful empty error (since everything has been redirected away). This is
 		// unfortunately equally awkward to address.
 		cmd := "mkdir -p " + logDir + "; " +
-			fmt.Sprintf(" export ROACHPROD=%d && ", nodes[i]) +
+			fmt.Sprintf(" export ROACHPROD=%d%s && ", nodes[i], c.Tag) +
 			c.Env + " " + binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr" +
 			" || (x=$?; cat " + logDir + "/cockroach.stderr; exit $x)"
