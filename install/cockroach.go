@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/roachprod/config"
 	"github.com/cockroachdb/roachprod/ssh"
 	"github.com/hashicorp/go-version"
+	"github.com/pkg/errors"
 )
 
 var StartOpts struct {
@@ -69,7 +70,7 @@ func getCockroachVersion(c *SyncedCluster, i int, host, user string) (*version.V
 	cmd := cockroachNodeBinary(c, i) + " version"
 	out, err := session.CombinedOutput(cmd)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
 	}
 
 	matches := regexp.MustCompile(`(?m)^Build Tag:\s+(.*)$`).FindSubmatch(out)
@@ -131,7 +132,7 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 				c.Parallel("", len(nodes), 0, func(i int) ([]byte, error) {
 					var err error
 					ips[i], err = c.GetInternalIP(nodes[i])
-					return nil, err
+					return nil, errors.Wrapf(err, "IPs")
 				})
 			}
 
@@ -169,8 +170,8 @@ mkdir -p certs
 %[1]s cert create-node localhost %[2]s --certs-dir=certs --ca-key=certs/ca.key
 tar cvf certs.tar certs
 `, cockroachNodeBinary(c, 1), strings.Join(nodeNames, " "))
-				if _, err := session.CombinedOutput(cmd); err != nil {
-					msg = err.Error()
+				if out, err := session.CombinedOutput(cmd); err != nil {
+					msg = fmt.Sprintf("%s: %v", out, err)
 				}
 				return nil, nil
 			})
@@ -225,8 +226,10 @@ tar cvf certs.tar certs
 					cmd = fmt.Sprintf(`cd ${HOME}/local/%d ; `, nodes[i])
 				}
 				cmd += `tar xf -`
-				_, err = session.CombinedOutput(cmd)
-				return nil, err
+				if out, err := session.CombinedOutput(cmd); err != nil {
+					return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+				}
+				return nil, nil
 			})
 		}
 	}
@@ -314,11 +317,15 @@ tar cvf certs.tar certs
 		// NB: this is awkward as when the process fails, the test runner will show an
 		// unhelpful empty error (since everything has been redirected away). This is
 		// unfortunately equally awkward to address.
-		cmd := "mkdir -p " + logDir + "; " + c.Env +
+		cmd := "mkdir -p " + logDir + "; " +
 			fmt.Sprintf(" export ROACHPROD=%d && ", nodes[i]) +
-			binary + " start " + strings.Join(args, " ") +
-			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr"
-		return session.CombinedOutput(cmd)
+			c.Env + " " + binary + " start " + strings.Join(args, " ")
+		if out, err := session.CombinedOutput(cmd); err != nil {
+			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+		}
+		// NB: if cockroach started successfully, we ignore the output as it is
+		// some harmless start messaging.
+		return nil, nil
 	})
 
 	if bootstrapped {
@@ -349,10 +356,9 @@ SET CLUSTER SETTING cluster.organization = 'Cockroach Labs - Production Testing'
 SET CLUSTER SETTING enterprise.license = '%s';"`, license)
 			out, err := session.CombinedOutput(cmd)
 			if err != nil {
-				msg = "while setting cluster settings: " + err.Error()
-			} else {
-				msg = strings.TrimSpace(string(out))
+				return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
 			}
+			msg = strings.TrimSpace(string(out))
 			return nil, nil
 		})
 
@@ -407,6 +413,7 @@ func (r Cockroach) SQL(c *SyncedCluster, args []string) error {
 	type result struct {
 		node   int
 		output string
+		err    error
 	}
 	resultChan := make(chan result, len(c.Nodes))
 
@@ -428,8 +435,7 @@ func (r Cockroach) SQL(c *SyncedCluster, args []string) error {
 
 		out, err := session.CombinedOutput(cmd)
 		if err != nil {
-			resultChan <- result{node: c.Nodes[i], output: fmt.Sprintf("err=%s,out=%s", err, out)}
-			return out, err
+			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
 		}
 
 		resultChan <- result{node: c.Nodes[i], output: string(out)}
