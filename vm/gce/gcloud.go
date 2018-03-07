@@ -1,6 +1,7 @@
 package gce
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -36,7 +37,12 @@ func runJSONCommand(args []string, parsed interface{}) error {
 
 	rawJSON, err := cmd.Output()
 	if err != nil {
-		return errors.Wrapf(err, "failed to run: gcloud %s", strings.Join(args, " "))
+		var stderr []byte
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr = exitErr.Stderr
+		}
+		return errors.Errorf("failed to run: gcloud %s: %s\nstdout: %s\nstderr: %s",
+			strings.Join(args, " "), err, bytes.TrimSpace(rawJSON), bytes.TrimSpace(stderr))
 	}
 
 	if err := json.Unmarshal(rawJSON, &parsed); err != nil {
