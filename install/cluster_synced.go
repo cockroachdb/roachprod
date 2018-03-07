@@ -182,12 +182,11 @@ fi
 		out, err := session.CombinedOutput(cmd)
 		var msg string
 		if err != nil {
-			msg = err.Error()
-		} else {
-			msg = strings.TrimSpace(string(out))
-			if msg == "" {
-				msg = "not running"
-			}
+			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+		}
+		msg = strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = "not running"
 		}
 		results[i] = msg
 		return nil, nil
@@ -380,7 +379,7 @@ func (c *SyncedCluster) CockroachVersions() map[string]int {
 		out, err := session.CombinedOutput(cmd)
 		var s string
 		if err != nil {
-			s = err.Error()
+			s = fmt.Sprintf("%s: %v", out, err)
 		} else {
 			s = strings.TrimSpace(string(out))
 		}
@@ -681,7 +680,7 @@ func (c *SyncedCluster) pgurls(nodes []int) map[int]string {
 	c.Parallel("", len(nodes), 0, func(i int) ([]byte, error) {
 		var err error
 		ips[i], err = c.GetInternalIP(nodes[i])
-		return nil, err
+		return nil, errors.Wrapf(err, "pgurls")
 	})
 
 	m := make(map[int]string, len(ips))
@@ -843,7 +842,7 @@ func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func
 	if len(failed) > 0 {
 		sort.Slice(failed, func(i, j int) bool { return failed[i].index < failed[j].index })
 		for _, f := range failed {
-			fmt.Fprintf(os.Stderr, "%d: %s: %s\n", f.index, f.err, f.out)
+			fmt.Fprintf(os.Stderr, "%d: %+v: %s\n", f.index, f.err, f.out)
 		}
 		log.Fatal("command failed")
 	}
