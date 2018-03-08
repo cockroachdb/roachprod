@@ -62,6 +62,7 @@ var (
 	secure         = false
 	nodeEnv        = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
 	nodeArgs       []string
+	tag            string
 	external       = false
 	adminurlOpen   = false
 )
@@ -138,6 +139,9 @@ Hint: use "roachprod sync" to update the list of available clusters.
 	c.Secure = secure
 	c.Env = nodeEnv
 	c.Args = nodeArgs
+	if tag != "" {
+		c.Tag = "/" + tag
+	}
 	return c, nil
 }
 
@@ -647,6 +651,15 @@ destroyed:
 	}),
 }
 
+const tagHelp = `
+The --tag flag can be used to to associate a tag with the process. This tag can
+then be used to restrict the processes which are operated on by the status and
+stop commands. Tags can have a hierarchical component by utilizing a slash
+separated string similar to a filesystem path. A tag matches if a prefix of the
+components match. For example, the tag "a/b" will match both "a/b" and
+"a/b/c/d".
+`
+
 var startCmd = &cobra.Command{
 	Use:   "start <cluster>",
 	Short: "start nodes on a cluster",
@@ -666,7 +679,7 @@ cockroach software is installed by default on a newly created cluster.
 
 The --args and --env flags can be used to pass arbitrary command line flags and
 environment variables to the cockroach process.
-
+` + tagHelp + `
 The "start" command takes care of setting up the --join address and specifying
 reasonable defautls for other flags. One side-effect of this convenience is
 that node 1 is special and must be started for the cluster to be initialized.
@@ -695,6 +708,7 @@ processes started by the "start", "run" and "ssh" commands. Every process
 started by roachprod is tagged with a ROACHPROD=<node> environment variable
 which is used by "stop" to locate the processes and terminate them. Processes
 are killed with signal 9 (SIGKILL) giving them no chance for a graceful exit.
+` + tagHelp + `
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
@@ -719,6 +733,7 @@ The "status" command outputs the binary and PID for the specified nodes:
      1: cockroach 29688
      2: cockroach 29687
      3: cockroach 29689
+` + tagHelp + `
 `,
 	Args: cobra.ExactArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
@@ -896,6 +911,7 @@ var sshCmd = &cobra.Command{
 	Use:   "ssh <cluster> -- [args]",
 	Short: "ssh to a node in a cluster",
 	Long: `SSH to a node in a cluster.
+` + tagHelp + `
 `,
 	Args: cobra.MinimumNArgs(1),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
@@ -1112,6 +1128,13 @@ func main() {
 		&duration, "duration", "d", 5*time.Minute, "the duration to run each test")
 	testCmd.Flags().StringVarP(
 		&concurrency, "concurrency", "c", "1-64", "the concurrency to run each test")
+
+	for _, cmd := range []*cobra.Command{
+		startCmd, statusCmd, stopCmd, sshCmd,
+	} {
+		cmd.Flags().StringVar(
+			&tag, "tag", "", "the process tag")
+	}
 
 	for _, cmd := range []*cobra.Command{
 		getCmd, putCmd, runCmd, startCmd, statusCmd, stopCmd, testCmd,
