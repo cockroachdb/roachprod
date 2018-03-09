@@ -145,6 +145,10 @@ Hint: use "roachprod sync" to update the list of available clusters.
 	return c, nil
 }
 
+// verifyClusterName ensures that the given name conforms to
+// our naming pattern of "<username>-<clustername>". The
+// username must match one of the vm.Provider account names
+// or the --username override.
 func verifyClusterName(clusterName string) (string, error) {
 	if len(clusterName) == 0 {
 		return "", fmt.Errorf("cluster name cannot be blank")
@@ -153,34 +157,53 @@ func verifyClusterName(clusterName string) (string, error) {
 		return clusterName, nil
 	}
 
-	account := username
-	if len(username) == 0 {
-		var err error
-		account, err = vm.FindActiveAccount()
+	// Use the vm.Provider account names, or --username.
+	var accounts []string
+	if len(username) > 0 {
+		accounts = []string{username}
+	} else {
+		seenAccounts := map[string]bool{}
+		active, err := vm.FindActiveAccounts()
 		if err != nil {
 			return "", err
 		}
-	}
-
-	if !strings.HasPrefix(clusterName, account+"-") {
-		i := strings.Index(clusterName, "-")
-		suffix := clusterName
-		if i != -1 {
-			// The user specified a username prefix, but it didn't match the active
-			// account name. For example, assuming the account is "peter", `roachprod
-			// create joe-perf` should be specified as `roachprod create joe-perf -u
-			// joe`.
-			suffix = clusterName[i+1:]
-		} else {
-			// The user didn't specify a username prefix. For example, assuming the
-			// account is "peter", `roachprod create perf` should be specified as
-			// `roachprod create peter-perf`.
+		for _, account := range active {
+			if !seenAccounts[account] {
+				seenAccounts[account] = true
+				accounts = append(accounts, account)
+			}
 		}
-		return "", fmt.Errorf("malformed cluster name %s, did you mean %s-%s?",
-			clusterName, account, suffix)
 	}
 
-	return clusterName, nil
+	// If we see <account>-<something>, accept it.
+	for _, account := range accounts {
+		if strings.HasPrefix(clusterName, account+"-") && len(clusterName) > len(account)+1 {
+			return clusterName, nil
+		}
+	}
+
+	// Try to pick out a reasonable cluster name from the input.
+	i := strings.Index(clusterName, "-")
+	suffix := clusterName
+	if i != -1 {
+		// The user specified a username prefix, but it didn't match an active
+		// account name. For example, assuming the account is "peter", `roachprod
+		// create joe-perf` should be specified as `roachprod create joe-perf -u
+		// joe`.
+		suffix = clusterName[i+1:]
+	} else {
+		// The user didn't specify a username prefix. For example, assuming the
+		// account is "peter", `roachprod create perf` should be specified as
+		// `roachprod create peter-perf`.
+	}
+
+	// Suggest acceptable cluster names.
+	var suggestions []string
+	for _, account := range accounts {
+		suggestions = append(suggestions, fmt.Sprintf("%s-%s", account, suffix))
+	}
+	return "", fmt.Errorf("malformed cluster name %s, did you mean one of %s",
+		clusterName, suggestions)
 }
 
 func wrap(f func(cmd *cobra.Command, args []string) error) func(cmd *cobra.Command, args []string) {
@@ -448,16 +471,31 @@ Listing clusters has the side-effect of syncing ssh keys/configs and the local
 hosts file.
 `,
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
-		account, err := vm.FindActiveAccount()
-		if err != nil {
-			return err
-		}
 
 		listPattern := regexp.MustCompile(".*")
 		switch len(args) {
 		case 0:
 			if listMine {
-				listPattern, err = regexp.Compile(fmt.Sprintf("^%s-", regexp.QuoteMeta(account)))
+				// In general, we expect that users will have the same
+				// account name across the services they're using,
+				// but we still want to function even if this is not
+				// the case.
+				seenAccounts := map[string]bool{}
+				accounts, err := vm.FindActiveAccounts()
+				if err != nil {
+					return err
+				}
+				pattern := ""
+				for _, account := range accounts {
+					if !seenAccounts[account] {
+						seenAccounts[account] = true
+						if len(pattern) > 0 {
+							pattern += "|"
+						}
+						pattern += fmt.Sprintf("(^%s-)", regexp.QuoteMeta(account))
+					}
+				}
+				listPattern, err = regexp.Compile(pattern)
 				if err != nil {
 					return err
 				}
@@ -466,6 +504,7 @@ hosts file.
 			if listMine {
 				return errors.New("--mine cannot be combined with a pattern")
 			}
+			var err error
 			listPattern, err = regexp.Compile(args[0])
 			if err != nil {
 				return errors.Wrapf(err, "could not compile regex pattern: %s", args[0])

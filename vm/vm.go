@@ -173,47 +173,39 @@ func FanOut(list List, action func(Provider, List) error) error {
 	return g.Wait()
 }
 
-// Memoizes return value from FindActiveAccount.
-var cachedActiveAccount string
+// Memoizes return value from FindActiveAccounts.
+var cachedActiveAccounts map[string]string
 
 // FindActiveAccount queries the active providers for the name of the user account.
-// We require that all account names between the providers agree, or this function will return an error.
-func FindActiveAccount() (string, error) {
-	// Memoize
-	if len(cachedActiveAccount) > 0 {
-		return cachedActiveAccount, nil
-	}
+func FindActiveAccounts() (map[string]string, error) {
+	source := cachedActiveAccounts
 
-	// Ask each Provider for its active account name
-	providerAccounts := map[string]string{}
-	err := ProvidersSequential(AllProviderNames(), func(p Provider) (err error) {
-		providerAccounts[p.Name()], err = p.FindActiveAccount()
-		return
-	})
-	if err != nil {
-		return "", err
-	}
-
-	// Ensure that there is exactly one distinct, non-trivial value across all providers
-	counts := map[string]int{}
-	var lastAccount string
-	for _, acct := range providerAccounts {
-		if len(acct) > 0 {
-			lastAccount = acct
-			counts[acct]++
+	if source == nil {
+		// Ask each Provider for its active account name.
+		source = map[string]string{}
+		err := ProvidersSequential(AllProviderNames(), func(p Provider) error {
+			account, err := p.FindActiveAccount()
+			if err != nil {
+				return err
+			}
+			if len(account) > 0 {
+				source[p.Name()] = account
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
 		}
+		cachedActiveAccounts = source
 	}
 
-	switch len(counts) {
-	case 0:
-		return "", errors.New("no Providers returned any active accounts")
-	case 1:
-		cachedActiveAccount = lastAccount
-		return lastAccount, nil
-	default:
-		// There's disagreement between the providers who the user account is
-		return "", errors.Errorf("multiple active Provider accounts detected: %s", providerAccounts)
+	// Return a copy.
+	ret := make(map[string]string, len(source))
+	for k, v := range source {
+		ret[k] = v
 	}
+
+	return ret, nil
 }
 
 // ForProvider resolves the Provider with the given name and executes the action.
