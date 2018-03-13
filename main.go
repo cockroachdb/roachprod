@@ -471,7 +471,6 @@ Listing clusters has the side-effect of syncing ssh keys/configs and the local
 hosts file.
 `,
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
-
 		listPattern := regexp.MustCompile(".*")
 		switch len(args) {
 		case 0:
@@ -1187,7 +1186,7 @@ func main() {
 			cmd.Flags().BoolVar(
 				&install.StartOpts.Sequential, "sequential", false,
 				"start nodes sequentially so node IDs match hostnames")
-			cmd.Flags().StringSliceVarP(
+			cmd.Flags().StringArrayVarP(
 				&nodeArgs, "args", "a", nil, "node arguments")
 			cmd.Flags().StringVarP(
 				&nodeEnv, "env", "e", nodeEnv, "node environment variables")
