@@ -124,8 +124,9 @@ func (c *SyncedCluster) Stop() {
 		// NB: xargs --no-run-if-empty is not supported on OSX.
 		// NB: the awkward-looking `awk` invocation serves to avoid having the
 		// awk process match its own output from `ps`.
-		cmd := fmt.Sprintf(
-			"ps axeww -o pid -o command | awk '/ROACHPROD=(%d%s)[ \\/]/ { print $1 }' | xargs kill -9 || true;",
+		cmd := fmt.Sprintf(`ps axeww -o pid -o command | \
+  sed 's/export ROACHPROD=//g' | \
+  awk '/ROACHPROD=(%d%s)[ \/]/ { print $1 }' | xargs kill -9 || true;`,
 			c.Nodes[i], c.escapedTag())
 		return session.CombinedOutput(cmd)
 	})
@@ -169,8 +170,9 @@ func (c *SyncedCluster) Status() {
 		defer session.Close()
 
 		binary := cockroachNodeBinary(c, c.Nodes[i])
-		cmd := fmt.Sprintf(
-			"out=$(ps axeww -o pid -o ucomm -o command | awk '/ROACHPROD=(%d%s)[ \\/]/ {print $2, $1}'",
+		cmd := fmt.Sprintf(`out=$(ps axeww -o pid -o ucomm -o command | \
+  sed 's/export ROACHPROD=//g' | \
+  awk '/ROACHPROD=(%d%s)[ \/]/ {print $2, $1}'`,
 			c.Nodes[i], c.escapedTag())
 		cmd += ` | sort | uniq);
 vers=$(` + binary + ` version 2>/dev/null | awk '/Build Tag:/ {print $NF}')
