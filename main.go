@@ -611,12 +611,19 @@ func syncAll(cloud *cld.Cloud) error {
 	}
 
 	{
-		names := make([]string, 0, len(cloud.Clusters))
-		for name := range cloud.Clusters {
+		names := make([]string, 0, len(cloud.Clusters)*3)
+		for name, c := range cloud.Clusters {
 			names = append(names, name)
+			for i := range c.VMs {
+				names = append(names, fmt.Sprintf("%s:%d", name, i))
+			}
 		}
 		for _, cmd := range []*cobra.Command{
-			destroyCmd, statusCmd, monitorCmd, startCmd, stopCmd, wipeCmd, sshCmd,
+			startCmd, stopCmd, wipeCmd,
+			extendCmd, destroyCmd,
+			statusCmd, monitorCmd,
+			sshCmd, sqlCmd,
+			adminurlCmd, pgurlCmd,
 		} {
 			cmd.ValidArgs = names
 		}
