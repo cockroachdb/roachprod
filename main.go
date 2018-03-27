@@ -1005,8 +1005,7 @@ var pgurlCmd = &cobra.Command{
 				ips[i] = c.VMs[nodes[i]-1]
 			}
 		} else {
-			display := fmt.Sprintf("%s: retrieving IP addresses", c.Name)
-			c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
+			c.Parallel("", len(nodes), 0, func(i int) ([]byte, error) {
 				var err error
 				ips[i], err = c.GetInternalIP(nodes[i])
 				return nil, err
