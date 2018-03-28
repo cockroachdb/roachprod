@@ -193,7 +193,7 @@ func (p *Provider) Create(names []string, opts vm.CreateOpts) error {
 		"--maintenance-policy", "MIGRATE",
 		"--service-account", "21965078311-compute@developer.gserviceaccount.com",
 		"--scopes", "default,storage-rw",
-		"--image", "ubuntu-1604-xenial-v20171002",
+		"--image", "ubuntu-1604-xenial-v20180306",
 		"--image-project", "ubuntu-os-cloud",
 		"--boot-disk-size", "10",
 		"--boot-disk-type", "pd-ssd",
