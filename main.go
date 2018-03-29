@@ -622,7 +622,7 @@ func syncAll(cloud *cld.Cloud) error {
 			startCmd, stopCmd, wipeCmd,
 			extendCmd, destroyCmd,
 			statusCmd, monitorCmd,
-			sshCmd, sqlCmd,
+			runCmd, sqlCmd,
 			adminurlCmd, pgurlCmd,
 		} {
 			cmd.ValidArgs = names
@@ -842,15 +842,20 @@ nodes.
 }
 
 var runCmd = &cobra.Command{
-	Use:   "run <cluster> <command> [args]",
-	Short: "run a command on the nodes in a cluster",
+	Use:     "run <cluster> <command> [args]",
+	Aliases: []string{"ssh"},
+	Short:   "run a command on the nodes in a cluster",
 	Long: `Run a command on the nodes in a cluster.
 `,
-	Args: cobra.MinimumNArgs(2),
+	Args: cobra.MinimumNArgs(1),
 	Run: wrap(func(_ *cobra.Command, args []string) error {
 		c, err := newCluster(args[0], false /* reserveLoadGen */)
 		if err != nil {
 			return err
+		}
+
+		if len(args) == 1 || len(c.Nodes) == 1 {
+			return c.Ssh(nil, args[1:])
 		}
 
 		cmd := strings.TrimSpace(strings.Join(args[1:], " "))
@@ -858,7 +863,6 @@ var runCmd = &cobra.Command{
 		if len(title) > 30 {
 			title = title[:27] + "..."
 		}
-
 		_ = c.Run(os.Stdout, c.Nodes, title, cmd)
 		return nil
 	}),
@@ -949,22 +953,6 @@ multiple nodes the destination file name will be prefixed with the node number.
 		}
 		c.Get(src, dest)
 		return nil
-	}),
-}
-
-var sshCmd = &cobra.Command{
-	Use:   "ssh <cluster> -- [args]",
-	Short: "ssh to a node in a cluster",
-	Long: `SSH to a node in a cluster.
-` + tagHelp + `
-`,
-	Args: cobra.MinimumNArgs(1),
-	Run: wrap(func(cmd *cobra.Command, args []string) error {
-		c, err := newCluster(args[0], false /* reserveLoadGen */)
-		if err != nil {
-			return err
-		}
-		return c.Ssh(nil, args[1:])
 	}),
 }
 
@@ -1109,7 +1097,6 @@ func main() {
 		installCmd,
 		putCmd,
 		getCmd,
-		sshCmd,
 		sqlCmd,
 		pgurlCmd,
 		adminurlCmd,
@@ -1124,7 +1111,7 @@ func main() {
 	}
 
 	for _, cmd := range []*cobra.Command{statusCmd, monitorCmd, startCmd,
-		stopCmd, runCmd, wipeCmd, testCmd, installCmd, putCmd, getCmd, sshCmd,
+		stopCmd, runCmd, wipeCmd, testCmd, installCmd, putCmd, getCmd,
 		sqlCmd, pgurlCmd, adminurlCmd,
 	} {
 		cmd.Flags().BoolVar(
@@ -1162,7 +1149,7 @@ func main() {
 	pgurlCmd.Flags().BoolVar(
 		&external, "external", false, "return pgurls for external connections")
 
-	sshCmd.Flags().BoolVar(
+	runCmd.Flags().BoolVar(
 		&secure, "secure", false, "use a secure cluster")
 
 	startCmd.Flags().IntVarP(&numRacks,
@@ -1174,7 +1161,7 @@ func main() {
 		&concurrency, "concurrency", "c", "1-64", "the concurrency to run each test")
 
 	for _, cmd := range []*cobra.Command{
-		startCmd, statusCmd, stopCmd, sshCmd,
+		startCmd, statusCmd, stopCmd, runCmd,
 	} {
 		cmd.Flags().StringVar(
 			&tag, "tag", "", "the process tag")

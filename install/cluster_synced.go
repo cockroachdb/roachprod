@@ -705,11 +705,13 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 		"-o", "StrictHostKeyChecking=no",
 	}
 	allArgs = append(allArgs, sshArgs...)
+	if c.IsLocal() {
+		allArgs = append(allArgs,
+			"-t",
+			fmt.Sprintf("cd ${HOME}/local/%d ; bash ", c.Nodes[0]))
+	}
 	if len(args) > 0 {
 		allArgs = append(allArgs, fmt.Sprintf("export ROACHPROD=%d%s ;", c.Nodes[0], c.Tag))
-	}
-	if c.IsLocal() {
-		allArgs = append(allArgs, fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0]))
 	}
 
 	// Perform template expansion on the arguments.
