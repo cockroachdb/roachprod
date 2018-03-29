@@ -285,7 +285,16 @@ done
 }
 
 func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
-	display := fmt.Sprintf("%s: %s", c.Name, title)
+	var e expander
+	cmd = e.expand(c, cmd)
+
+	// Stream output if we're running the command on only 1 node.
+	stream := len(nodes) == 1
+	var display string
+	if !stream {
+		display = fmt.Sprintf("%s: %s", c.Name, title)
+	}
+
 	errors := make([]error, len(nodes))
 	results := make([]string, len(nodes))
 	c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
@@ -302,6 +311,12 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], cmd)
 		}
 
+		if stream {
+			session.Stdout = w
+			errors[i] = session.Run(nodeCmd)
+			return nil, nil
+		}
+
 		out, err := session.CombinedOutput(nodeCmd)
 		msg := strings.TrimSpace(string(out))
 		if err != nil {
@@ -312,8 +327,10 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		return nil, nil
 	})
 
-	for i, r := range results {
-		fmt.Fprintf(w, "  %2d: %s\n", nodes[i], r)
+	if !stream {
+		for i, r := range results {
+			fmt.Fprintf(w, "  %2d: %s\n", nodes[i], r)
+		}
 	}
 
 	for _, err := range errors {
@@ -705,11 +722,16 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 		"-o", "StrictHostKeyChecking=no",
 	}
 	allArgs = append(allArgs, sshArgs...)
+	if c.IsLocal() {
+		cmd := fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0])
+		if len(args) == 0 /* interactive */ {
+			allArgs = append(allArgs, "-t")
+			cmd += "bash "
+		}
+		allArgs = append(allArgs, cmd)
+	}
 	if len(args) > 0 {
 		allArgs = append(allArgs, fmt.Sprintf("export ROACHPROD=%d%s ;", c.Nodes[0], c.Tag))
-	}
-	if c.IsLocal() {
-		allArgs = append(allArgs, fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0]))
 	}
 
 	// Perform template expansion on the arguments.
