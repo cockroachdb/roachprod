@@ -104,13 +104,7 @@ func (c *SyncedCluster) GetInternalIP(index int) (string, error) {
 }
 
 func (c *SyncedCluster) Start() {
-	var e expander
-	var args []string
-	for _, arg := range c.Args {
-		arg = e.expand(c, arg)
-		args = append(args, strings.Split(arg, " ")...)
-	}
-	c.Impl.Start(c, args)
+	c.Impl.Start(c, c.Args)
 }
 
 func (c *SyncedCluster) Stop() {
@@ -285,9 +279,6 @@ done
 }
 
 func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
-	var e expander
-	cmd = e.expand(c, cmd)
-
 	// Stream output if we're running the command on only 1 node.
 	stream := len(nodes) == 1
 	var display string
@@ -305,6 +296,12 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 			return nil, nil
 		}
 		defer session.Close()
+
+		// Argument template expansion is node specific (e.g. for {store-dir}).
+		e := expander{
+			node: nodes[i],
+		}
+		cmd := e.expand(c, cmd)
 
 		nodeCmd := fmt.Sprintf("export ROACHPROD=%d%s && ", nodes[i], c.Tag) + cmd
 		if c.IsLocal() {
@@ -735,7 +732,9 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 	}
 
 	// Perform template expansion on the arguments.
-	var e expander
+	e := expander{
+		node: c.Nodes[0],
+	}
 	for _, arg := range args {
 		arg = e.expand(c, arg)
 		allArgs = append(allArgs, strings.Split(arg, " ")...)
