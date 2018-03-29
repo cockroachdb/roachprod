@@ -1,7 +1,7 @@
 ## roachprod
 
-⚠️ roachprod is an **internal** tool for testing CockroachDB clusters. Use at
-your own risk! ⚠️
+⚠️ roachprod is an **internal** tool for creating and testing
+CockroachDB clusters. Use at your own risk! ⚠️
 
 ## Setup
 
@@ -17,13 +17,19 @@ $ go get -u github.com/cockroachdb/roachprod
 
 ## Summary
 
-* Clusters are created under the [cockroach-ephemeral] GCE project.
-* Anyone can connect to any port on VMs in `cockroach-ephemeral`.
+* By default, clusters are created in the [cockroach-ephemeral] GCE
+  project. Use the `--gce-project` flag or `GCE_PROJECT` environment
+  variable to create clusters in a different GCE project. Note that
+  the `lifetime` functionality requires `roachprod gc
+  --gce-project=<name>` to be run periodically (i.e. via a
+  cronjob). This is only provided out-of-the-box for the
+  [cockroach-ephemeral] cluster.
+* Anyone can connect to any port on VMs in [cockroach-ephemeral].
   **DO NOT STORE SENSITIVE DATA**.
 * Cluster names are prefixed with the user creating them. For example,
   `roachprod create test` creates the `marc-test` cluster.
-* VMs have a default lifetime of 12 hours (changeable with the `-l` flag) and
-  are deleted 6 hours after expiration.
+* VMs have a default lifetime of 12 hours (changeable with the
+  `--lifetime` flag).
 * Default settings create 4 VMs (`-n 4`) with 4 CPUs, 15GB memory
   (`--machine-type=n1-standard-4`), and local SSDs (`--local-ssd`).
 

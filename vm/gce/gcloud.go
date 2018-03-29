@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	project      = "cockroach-ephemeral"
-	ProviderName = "gce"
+	defaultProject = "cockroach-ephemeral"
+	ProviderName   = "gce"
 )
 
 // init will inject the GCE provider into vm.Providers, but only if the gcloud tool is available on the local path.
@@ -69,7 +69,7 @@ type jsonVM struct {
 }
 
 // Convert the JSON VM data into our common VM type
-func (jsonVM *jsonVM) toVM() *vm.VM {
+func (jsonVM *jsonVM) toVM(project string) *vm.VM {
 	var vmErrors []error
 	var err error
 
@@ -127,8 +127,10 @@ type jsonAuth struct {
 
 // User-configurable, provider-specific options
 type providerOpts struct {
-	MachineType string
-	Zones       []string
+	Project        string
+	ServiceAccount string
+	MachineType    string
+	Zones          []string
 }
 
 func (o *providerOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
@@ -137,8 +139,21 @@ func (o *providerOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
 	flags.StringSliceVar(&o.Zones, "zones", []string{"us-east1-b", "us-west1-b", "europe-west2-b"}, "DEPRECATED")
 	flags.MarkDeprecated("zones", "use "+ProviderName+"-zones instead")
 
-	flags.StringVar(&o.MachineType, ProviderName+"-machine-type", "n1-standard-4", "Machine type (see https://cloud.google.com/compute/docs/machine-types)")
-	flags.StringSliceVar(&o.Zones, ProviderName+"-zones", []string{"us-east1-b", "us-west1-b", "europe-west2-b"}, "Zones for cluster")
+	flags.StringVar(&o.ServiceAccount, ProviderName+"-service-account",
+		os.Getenv("GCE_SERVICE_ACCOUNT"), "Service account to use")
+	flags.StringVar(&o.MachineType, ProviderName+"-machine-type", "n1-standard-4",
+		"Machine type (see https://cloud.google.com/compute/docs/machine-types)")
+	flags.StringSliceVar(&o.Zones, ProviderName+"-zones",
+		[]string{"us-east1-b", "us-west1-b", "europe-west2-b"}, "Zones for cluster")
+}
+
+func (o *providerOpts) ConfigureClusterFlags(flags *pflag.FlagSet) {
+	project := os.Getenv("GCE_PROJECT")
+	if project == "" {
+		project = defaultProject
+	}
+	flags.StringVar(&o.Project, ProviderName+"-project", project,
+		"Project to create cluster in")
 }
 
 type Provider struct {
@@ -146,7 +161,7 @@ type Provider struct {
 }
 
 func (p *Provider) CleanSSH() error {
-	args := []string{"compute", "config-ssh", "--project", project, "--quiet", "--remove"}
+	args := []string{"compute", "config-ssh", "--project", p.opts.Project, "--quiet", "--remove"}
 	cmd := exec.Command("gcloud", args...)
 
 	output, err := cmd.CombinedOutput()
@@ -157,7 +172,7 @@ func (p *Provider) CleanSSH() error {
 }
 
 func (p *Provider) ConfigSSH() error {
-	args := []string{"compute", "config-ssh", "--project", project, "--quiet"}
+	args := []string{"compute", "config-ssh", "--project", p.opts.Project, "--quiet"}
 	cmd := exec.Command("gcloud", args...)
 
 	output, err := cmd.CombinedOutput()
@@ -168,6 +183,11 @@ func (p *Provider) ConfigSSH() error {
 }
 
 func (p *Provider) Create(names []string, opts vm.CreateOpts) error {
+	if p.opts.Project != defaultProject {
+		fmt.Printf("WARNING: --lifetime functionality requires "+
+			"`roachprod gc --gce-project=%s` cronjob\n", p.opts.Project)
+	}
+
 	// Create GCE startup script file.
 	filename, err := writeStartupScript()
 	if err != nil {
@@ -191,12 +211,18 @@ func (p *Provider) Create(names []string, opts vm.CreateOpts) error {
 		"compute", "instances", "create",
 		"--subnet", "default",
 		"--maintenance-policy", "MIGRATE",
-		"--service-account", "21965078311-compute@developer.gserviceaccount.com",
 		"--scopes", "default,storage-rw",
 		"--image", "ubuntu-1604-xenial-v20171002",
 		"--image-project", "ubuntu-os-cloud",
 		"--boot-disk-size", "10",
 		"--boot-disk-type", "pd-ssd",
+	}
+
+	if p.opts.Project == defaultProject && p.opts.ServiceAccount == "" {
+		p.opts.ServiceAccount = "21965078311-compute@developer.gserviceaccount.com"
+	}
+	if p.opts.ServiceAccount != "" {
+		args = append(args, "--service-account", p.opts.ServiceAccount)
 	}
 
 	// Dynamic args.
@@ -207,7 +233,7 @@ func (p *Provider) Create(names []string, opts vm.CreateOpts) error {
 	args = append(args, "--labels", fmt.Sprintf("lifetime=%s", opts.Lifetime))
 
 	args = append(args, "--metadata-from-file", fmt.Sprintf("startup-script=%s", filename))
-	args = append(args, "--project", project)
+	args = append(args, "--project", p.opts.Project)
 
 	var g errgroup.Group
 
@@ -257,7 +283,7 @@ func (p *Provider) Delete(vms vm.List) error {
 			"--delete-disks", "all",
 		}
 
-		args = append(args, "--project", project)
+		args = append(args, "--project", p.opts.Project)
 		args = append(args, "--zone", zone)
 		args = append(args, names...)
 
@@ -281,7 +307,7 @@ func (p *Provider) Extend(vms vm.List, lifetime time.Duration) error {
 	for _, v := range vms {
 		args := []string{"compute", "instances", "add-labels"}
 
-		args = append(args, "--project", project)
+		args = append(args, "--project", p.opts.Project)
 		args = append(args, "--zone", v.Zone)
 		args = append(args, "--labels", fmt.Sprintf("lifetime=%s", lifetime))
 		args = append(args, v.Name)
@@ -323,7 +349,7 @@ func (p *Provider) Flags() vm.ProviderFlags {
 
 // Query gcloud to produce a list of VM info objects.
 func (p *Provider) List() (vm.List, error) {
-	args := []string{"compute", "instances", "list", "--project", project, "--format", "json"}
+	args := []string{"compute", "instances", "list", "--project", p.opts.Project, "--format", "json"}
 
 	// Run the command, extracting the JSON payload
 	jsonVMS := make([]jsonVM, 0)
@@ -334,7 +360,7 @@ func (p *Provider) List() (vm.List, error) {
 	// Now, convert the json payload into our common VM type
 	vms := make(vm.List, len(jsonVMS))
 	for i, jsonVM := range jsonVMS {
-		vms[i] = *jsonVM.toVM()
+		vms[i] = *jsonVM.toVM(p.opts.Project)
 	}
 
 	return vms, nil
