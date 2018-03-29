@@ -1134,6 +1134,12 @@ func main() {
 	// Allow each Provider to inject additional configuration flags
 	for _, p := range vm.Providers {
 		p.Flags().ConfigureCreateFlags(createCmd.Flags())
+
+		for _, cmd := range []*cobra.Command{
+			createCmd, destroyCmd, extendCmd, listCmd, syncCmd, gcCmd,
+		} {
+			p.Flags().ConfigureClusterFlags(cmd.Flags())
+		}
 	}
 
 	extendCmd.Flags().DurationVarP(&extendLifetime,

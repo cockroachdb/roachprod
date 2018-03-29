@@ -31,6 +31,10 @@ type emptyFlags struct{}
 func (o *emptyFlags) ConfigureCreateFlags(flags *pflag.FlagSet) {
 }
 
+// ConfigureClusterFlags is part of ProviderFlags.  This implementation is a no-op.
+func (o *emptyFlags) ConfigureClusterFlags(*pflag.FlagSet) {
+}
+
 // CleanSSH is part of the vm.Provider interface.  This implementation is a no-op.
 func (p *Provider) CleanSSH() error {
 	return nil
