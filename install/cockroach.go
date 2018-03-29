@@ -89,6 +89,15 @@ func GetAdminUIPort(connPort int) int {
 	return connPort + 1
 }
 
+func argExists(args []string, target string) bool {
+	for _, arg := range args {
+		if arg == target || strings.HasPrefix(arg, target+"=") {
+			return true
+		}
+	}
+	return false
+}
+
 func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 	// Check to see if node 1 was started indicating the cluster was
 	// bootstrapped.
@@ -286,7 +295,9 @@ tar cvf certs.tar certs
 			dir = fmt.Sprintf("${HOME}/local/%d/data", nodes[i])
 			logDir = fmt.Sprintf("${HOME}/local/%d/logs", nodes[i])
 		}
-		args = append(args, "--store=path="+dir)
+		if !argExists(extraArgs, "--store") {
+			args = append(args, "--store=path="+dir)
+		}
 		args = append(args, "--log-dir="+logDir)
 		args = append(args, "--background")
 		if VersionSatifies(vers, ">=1.1") {
@@ -303,7 +314,9 @@ tar cvf certs.tar certs
 		args = append(args, fmt.Sprintf("--port=%d", port))
 		args = append(args, fmt.Sprintf("--http-port=%d", GetAdminUIPort(port)))
 		if locality := c.locality(nodes[i]); locality != "" {
-			args = append(args, "--locality="+locality)
+			if !argExists(extraArgs, "--locality") {
+				args = append(args, "--locality="+locality)
+			}
 		}
 		if nodes[i] != 1 {
 			args = append(args, fmt.Sprintf("--join=%s:%d", host1, r.NodePort(c, 1)))
