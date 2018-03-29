@@ -297,6 +297,9 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		}
 		defer session.Close()
 
+		var e expander
+		cmd = e.expand(c, cmd)
+
 		nodeCmd := fmt.Sprintf("export ROACHPROD=%d%s && ", nodes[i], c.Tag) + cmd
 		if c.IsLocal() {
 			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], cmd)
