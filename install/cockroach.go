@@ -311,7 +311,15 @@ tar cvf certs.tar certs
 		if advertisePublicIP {
 			args = append(args, fmt.Sprintf("--advertise-host=%s", host))
 		}
-		args = append(args, extraArgs...)
+
+		// Argument template expansion is node specific (e.g. for {store-dir}).
+		e := expander{
+			node: nodes[i],
+		}
+		for _, arg := range extraArgs {
+			arg = e.expand(c, arg)
+			args = append(args, strings.Split(arg, " ")...)
+		}
 
 		binary := cockroachNodeBinary(c, nodes[i])
 		// NB: this is awkward as when the process fails, the test runner will show an

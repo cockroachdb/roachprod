@@ -12,6 +12,7 @@ var pgPortRe = regexp.MustCompile(`{pgport(:[-,0-9]+)?}`)
 var storeDirRe = regexp.MustCompile(`{store-dir}`)
 
 type expander struct {
+	node    int
 	pgURLs  map[int]string
 	pgPorts map[int]string
 }
@@ -70,7 +71,7 @@ func (e *expander) maybeExpandStoreDir(c *SyncedCluster, s string) (string, bool
 	if !storeDirRe.MatchString(s) {
 		return s, false
 	}
-	return c.Impl.NodeDir(c, c.Nodes[0]), true
+	return c.Impl.NodeDir(c, e.node), true
 }
 
 func (e *expander) expand(c *SyncedCluster, arg string) string {
