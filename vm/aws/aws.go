@@ -88,6 +88,9 @@ func (o *providerOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
 		"ubuntu", "Name of the remote user to SSH as")
 }
 
+func (o *providerOpts) ConfigureClusterFlags(flags *pflag.FlagSet) {
+}
+
 // Provider implements the vm.Provider interface for AWS.
 type Provider struct {
 	opts providerOpts

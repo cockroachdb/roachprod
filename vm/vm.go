@@ -116,8 +116,11 @@ type CreateOpts struct {
 // If a new command is added (perhaps `roachprod enlarge`) that needs additional provider-
 // specific flags, add a similarly-named method `ConfigureEnlargeFlags` to mix in the additional flags.
 type ProviderFlags interface {
-	// Configures a FlagSet with any options relevant to the `roachprod create` command
+	// Configures a FlagSet with any options relevant to the `create` command.
 	ConfigureCreateFlags(*pflag.FlagSet)
+	// Configures a FlagSet with any options relevant to cluster manipulation
+	// commands (`create`, `destroy`, `list`, `sync` and `gc`).
+	ConfigureClusterFlags(*pflag.FlagSet)
 }
 
 // A Provider is a source of virtual machines running on some hosting platform.
