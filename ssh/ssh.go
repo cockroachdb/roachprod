@@ -132,6 +132,10 @@ var sshState = struct {
 }
 
 func NewSSHSession(user, host string) (*ssh.Session, error) {
+	if host == "127.0.0.1" || host == "localhost" {
+		return nil, errors.New("unable to ssh to localhost; file a bug")
+	}
+
 	sshState.clientMu.Lock()
 	target := fmt.Sprintf("%s@%s", user, host)
 	client := sshState.clients[target]
@@ -153,10 +157,6 @@ func NewSSHSession(user, host string) (*ssh.Session, error) {
 		var err error
 		client.Client, _, err = newSSHClient(user, host)
 		if err != nil {
-			if host == "127.0.0.1" || host == "localhost" {
-				err = errors.Wrap(err, "could not ssh to localhost: "+
-					"ensure that you have password-less sshd set up")
-			}
 			return nil, err
 		}
 	}

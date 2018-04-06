@@ -60,8 +60,8 @@ func cockroachNodeBinary(c *SyncedCluster, i int) string {
 	return path
 }
 
-func getCockroachVersion(c *SyncedCluster, i int, host, user string) (*version.Version, error) {
-	session, err := ssh.NewSSHSession(user, host)
+func getCockroachVersion(c *SyncedCluster, i int) (*version.Version, error) {
+	session, err := c.newSession(i)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 		var existsErr error
 		display := fmt.Sprintf("%s: checking certs", c.Name)
 		c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
-			session, err := ssh.NewSSHSession(c.user(1), c.host(1))
+			session, err := c.newSession(1)
 			if err != nil {
 				return nil, err
 			}
@@ -147,7 +147,7 @@ func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
 
 			// Generate the ca, client and node certificates on the first node.
 			c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
-				session, err := ssh.NewSSHSession(c.user(1), c.host(1))
+				session, err := c.newSession(1)
 				if err != nil {
 					return nil, err
 				}
@@ -190,31 +190,38 @@ tar cvf certs.tar certs
 				os.Exit(1)
 			}
 
-			// Retrieve the certs.tar that was created on the first node.
-			tmpfile, err := ioutil.TempFile("", "certs")
-			if err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
-			}
-			_ = tmpfile.Close()
-			defer os.Remove(tmpfile.Name()) // clean up
-
-			if err := func() error {
-				session, err := ssh.NewSSHSession(c.user(1), c.host(1))
+			var tmpfileName string
+			if c.IsLocal() {
+				tmpfileName = os.ExpandEnv(filepath.Join(dir, "certs.tar"))
+			} else {
+				// Retrieve the certs.tar that was created on the first node.
+				tmpfile, err := ioutil.TempFile("", "certs")
 				if err != nil {
-					return err
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(1)
 				}
-				defer session.Close()
-				return ssh.SCPGet(filepath.Join(dir, "certs.tar"),
-					tmpfile.Name(), func(float64) {}, session)
-			}(); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-				os.Exit(1)
+				_ = tmpfile.Close()
+				defer os.Remove(tmpfile.Name()) // clean up
+
+				if err := func() error {
+					session, err := ssh.NewSSHSession(c.host(1), c.user(1))
+					if err != nil {
+						return err
+					}
+					defer session.Close()
+					return ssh.SCPGet(filepath.Join(dir, "certs.tar"),
+						tmpfile.Name(), func(float64) {}, session)
+				}(); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+					os.Exit(1)
+				}
+
+				tmpfileName = tmpfile.Name()
 			}
 
 			// Read the certs.tar file we just downloaded. We'll be piping it to the
 			// other nodes in the cluster.
-			certsTar, err := ioutil.ReadFile(tmpfile.Name())
+			certsTar, err := ioutil.ReadFile(tmpfileName)
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				os.Exit(1)
@@ -223,13 +230,13 @@ tar cvf certs.tar certs
 			// Skip the the first node which is where we generated the certs.
 			nodes = nodes[1:]
 			c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
-				session, err := ssh.NewSSHSession(c.user(nodes[i]), c.host(nodes[i]))
+				session, err := c.newSession(nodes[i])
 				if err != nil {
 					return nil, err
 				}
 				defer session.Close()
 
-				session.Stdin = bytes.NewReader(certsTar)
+				session.SetStdin(bytes.NewReader(certsTar))
 				var cmd string
 				if c.IsLocal() {
 					cmd = fmt.Sprintf(`cd ${HOME}/local/%d ; `, nodes[i])
@@ -263,15 +270,12 @@ tar cvf certs.tar certs
 		p = 1
 	}
 	c.Parallel(display, len(nodes), p, func(i int) ([]byte, error) {
-		host := c.host(nodes[i])
-		user := c.user(nodes[i])
-
-		vers, err := getCockroachVersion(c, nodes[i], host, user)
+		vers, err := getCockroachVersion(c, nodes[i])
 		if err != nil {
 			return nil, err
 		}
 
-		session, err := ssh.NewSSHSession(user, host)
+		session, err := c.newSession(nodes[i])
 		if err != nil {
 			return nil, err
 		}
@@ -322,7 +326,7 @@ tar cvf certs.tar certs
 			args = append(args, fmt.Sprintf("--join=%s:%d", host1, r.NodePort(c, 1)))
 		}
 		if advertisePublicIP {
-			args = append(args, fmt.Sprintf("--advertise-host=%s", host))
+			args = append(args, fmt.Sprintf("--advertise-host=%s", c.host(i)))
 		}
 
 		// Argument template expansion is node specific (e.g. for {store-dir}).
@@ -361,7 +365,7 @@ tar cvf certs.tar certs
 		var msg string
 		display = fmt.Sprintf("%s: initializing cluster settings", c.Name)
 		c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
-			session, err := ssh.NewSSHSession(c.user(1), c.host(1))
+			session, err := c.newSession(1)
 			if err != nil {
 				return nil, err
 			}
@@ -442,7 +446,7 @@ func (r Cockroach) SQL(c *SyncedCluster, args []string) error {
 
 	display := fmt.Sprintf("%s: executing sql", c.Name)
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
-		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
+		session, err := c.newSession(c.Nodes[i])
 		if err != nil {
 			return nil, err
 		}
