@@ -601,25 +601,88 @@ func (c *SyncedCluster) Get(src, dest string) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 
+			src := src
+			dest := dest
+			if len(c.Nodes) > 1 {
+				base := fmt.Sprintf("%d.%s", c.Nodes[i], filepath.Base(dest))
+				dest = filepath.Join(filepath.Dir(dest), base)
+			}
+
+			progress := func(p float64) {
+				linesMu.Lock()
+				defer linesMu.Unlock()
+				lines[i] = formatProgress(p)
+			}
+
+			if c.IsLocal() {
+				if !filepath.IsAbs(src) {
+					src = filepath.Join(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), c.Nodes[i]), src)
+				}
+
+				var copy func(src, dest string, info os.FileInfo) error
+				copy = func(src, dest string, info os.FileInfo) error {
+					if info.IsDir() {
+						if err := os.MkdirAll(dest, info.Mode()); err != nil {
+							return err
+						}
+
+						infos, err := ioutil.ReadDir(src)
+						if err != nil {
+							return err
+						}
+
+						for _, info := range infos {
+							if err := copy(
+								filepath.Join(src, info.Name()),
+								filepath.Join(dest, info.Name()),
+								info,
+							); err != nil {
+								return err
+							}
+						}
+						return nil
+					}
+
+					if !info.Mode().IsRegular() {
+						return nil
+					}
+
+					out, err := os.Create(dest)
+					if err != nil {
+						return err
+					}
+					defer out.Close()
+
+					if err := os.Chmod(out.Name(), info.Mode()); err != nil {
+						return err
+					}
+
+					in, err := os.Open(src)
+					if err != nil {
+						return err
+					}
+					defer in.Close()
+
+					p := &ssh.ProgressWriter{out, 0, info.Size(), progress}
+					_, err = io.Copy(p, in)
+					return err
+				}
+
+				info, err := os.Stat(src)
+				if err != nil {
+					results <- result{i, err}
+					return
+				}
+				err = copy(src, dest, info)
+				results <- result{i, err}
+				return
+			}
+
+			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 			if err == nil {
 				defer session.Close()
-				src := src
-				dest := dest
-
-				if c.IsLocal() && !filepath.IsAbs(src) {
-					src = filepath.Join(fmt.Sprintf("local/%d", c.Nodes[i]), src)
-				}
-				if len(c.Nodes) > 1 {
-					base := fmt.Sprintf("%d.%s", c.Nodes[i], filepath.Base(dest))
-					dest = filepath.Join(filepath.Dir(dest), base)
-				}
-				err = ssh.SCPGet(src, dest, func(p float64) {
-					linesMu.Lock()
-					defer linesMu.Unlock()
-					lines[i] = formatProgress(p)
-				}, session)
+				err = ssh.SCPGet(src, dest, progress, session)
 			}
 			results <- result{i, err}
 		}(i)
