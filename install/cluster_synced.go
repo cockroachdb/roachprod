@@ -708,8 +708,13 @@ func (c *SyncedCluster) pgurls(nodes []int) map[int]string {
 }
 
 func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
-	if len(c.Nodes) != 1 {
-		return fmt.Errorf("invalid number of nodes for ssh: %d", len(c.Nodes))
+	if len(c.Nodes) != 1 && len(args) == 0 {
+		// If trying to ssh to more than 1 node and the ssh session is interative,
+		// try sshing with an iTerm2 split screen configuration.
+		sshed, err := maybeSplitScreenSSHITerm2(c)
+		if sshed {
+			return err
+		}
 	}
 
 	allArgs := []string{
