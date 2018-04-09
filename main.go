@@ -1182,7 +1182,7 @@ func main() {
 		switch cmd {
 		case startCmd, testCmd:
 			cmd.Flags().StringVarP(
-				&config.Binary, "binary", "b", "./cockroach",
+				&config.Binary, "binary", "b", config.Binary,
 				"the remote cockroach binary used to start a server")
 			cmd.Flags().BoolVar(
 				&install.StartOpts.Sequential, "sequential", false,

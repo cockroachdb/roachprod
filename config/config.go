@@ -6,7 +6,7 @@ import (
 )
 
 var (
-	Binary     = "./cockroach"
+	Binary     = "cockroach"
 	SlackToken string
 	OSUser     *user.User
 )
