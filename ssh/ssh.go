@@ -132,6 +132,10 @@ var sshState = struct {
 }
 
 func NewSSHSession(user, host string) (*ssh.Session, error) {
+	if host == "127.0.0.1" || host == "localhost" {
+		return nil, errors.New("unable to ssh to localhost; file a bug")
+	}
+
 	sshState.clientMu.Lock()
 	target := fmt.Sprintf("%s@%s", user, host)
 	client := sshState.clients[target]
@@ -153,10 +157,6 @@ func NewSSHSession(user, host string) (*ssh.Session, error) {
 		var err error
 		client.Client, _, err = newSSHClient(user, host)
 		if err != nil {
-			if host == "127.0.0.1" || host == "localhost" {
-				err = errors.Wrap(err, "could not ssh to localhost: "+
-					"ensure that you have password-less sshd set up")
-			}
 			return nil, err
 		}
 	}
@@ -171,18 +171,18 @@ func IsSigKill(err error) bool {
 	return false
 }
 
-type progressWriter struct {
-	writer   io.Writer
-	done     int64
-	total    int64
-	progress func(float64)
+type ProgressWriter struct {
+	Writer   io.Writer
+	Done     int64
+	Total    int64
+	Progress func(float64)
 }
 
-func (p *progressWriter) Write(b []byte) (int, error) {
-	n, err := p.writer.Write(b)
+func (p *ProgressWriter) Write(b []byte) (int, error) {
+	n, err := p.Writer.Write(b)
 	if err == nil {
-		p.done += int64(n)
-		p.progress(float64(p.done) / float64(p.total))
+		p.Done += int64(n)
+		p.Progress(float64(p.Done) / float64(p.Total))
 	}
 	return n, err
 }
@@ -207,7 +207,7 @@ func SCPPut(src, dest string, progress func(float64), session *ssh.Session) erro
 		}
 		defer w.Close()
 		fmt.Fprintf(w, "C%#o %d %s\n", s.Mode().Perm(), s.Size(), path.Base(src))
-		p := &progressWriter{w, 0, s.Size(), progress}
+		p := &ProgressWriter{w, 0, s.Size(), progress}
 		if _, err := io.Copy(p, f); err != nil {
 			errCh <- err
 			return
@@ -295,7 +295,7 @@ func SCPGet(src, dest string, progress func(float64), session *ssh.Session) erro
 
 				fmt.Fprint(wp, "\x00")
 
-				p := &progressWriter{f, 0, size, progress}
+				p := &ProgressWriter{f, 0, size, progress}
 				if _, err := io.Copy(p, io.LimitReader(r, size)); err != nil {
 					errCh <- err
 					return

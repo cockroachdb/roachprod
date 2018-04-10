@@ -20,6 +20,7 @@ import (
 	"github.com/cockroachdb/roachprod/config"
 	"github.com/cockroachdb/roachprod/ssh"
 	"github.com/cockroachdb/roachprod/ui"
+
 	"github.com/pkg/errors"
 )
 
@@ -107,10 +108,22 @@ func (c *SyncedCluster) Start() {
 	c.Impl.Start(c, c.Args)
 }
 
+func (c *SyncedCluster) newSession(i int) (session, error) {
+	if c.IsLocal() {
+		return newLocalSession(), nil
+	}
+
+	s, err := ssh.NewSSHSession(c.user(i), c.host(i))
+	if err != nil {
+		return nil, err
+	}
+	return &remoteSession{s}, nil
+}
+
 func (c *SyncedCluster) Stop() {
 	display := fmt.Sprintf("%s: stopping", c.Name)
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
-		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
+		session, err := c.newSession(c.Nodes[i])
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +143,7 @@ func (c *SyncedCluster) Wipe() {
 	display := fmt.Sprintf("%s: wiping", c.Name)
 	c.Stop()
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
-		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
+		session, err := c.newSession(c.Nodes[i])
 		if err != nil {
 			return nil, err
 		}
@@ -156,7 +169,7 @@ func (c *SyncedCluster) Status() {
 	display := fmt.Sprintf("%s: status", c.Name)
 	results := make([]string, len(c.Nodes))
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
-		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
+		session, err := c.newSession(c.Nodes[i])
 		if err != nil {
 			results[i] = err.Error()
 			return nil, nil
@@ -205,19 +218,20 @@ func (c *SyncedCluster) Monitor() chan nodeMonitorInfo {
 
 	for i := range nodes {
 		go func(i int) {
-			session, err := ssh.NewSSHSession(c.user(nodes[i]), c.host(nodes[i]))
+			session, err := c.newSession(nodes[i])
 			if err != nil {
 				ch <- nodeMonitorInfo{nodes[i], err.Error()}
 				return
 			}
 			defer session.Close()
 
-			go func() {
-				p, err := session.StdoutPipe()
-				if err != nil {
-					ch <- nodeMonitorInfo{nodes[i], err.Error()}
-					return
-				}
+			p, err := session.StdoutPipe()
+			if err != nil {
+				ch <- nodeMonitorInfo{nodes[i], err.Error()}
+				return
+			}
+
+			go func(p io.Reader) {
 				r := bufio.NewReader(p)
 				for {
 					line, _, err := r.ReadLine()
@@ -226,7 +240,7 @@ func (c *SyncedCluster) Monitor() chan nodeMonitorInfo {
 					}
 					ch <- nodeMonitorInfo{nodes[i], string(line)}
 				}
-			}()
+			}(p)
 
 			// On each monitored node, we loop looking for a cockroach process. In
 			// order to avoid polling with lsof, if we find a live process we use nc
@@ -257,7 +271,7 @@ done
 
 			// Request a PTY so that the script will receive will receive a SIGPIPE
 			// when the session is closed.
-			if err := session.RequestPty("vt100", 40, 80, nil); err != nil {
+			if err := session.RequestPty(); err != nil {
 				ch <- nodeMonitorInfo{nodes[i], err.Error()}
 				return
 			}
@@ -289,7 +303,7 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 	errors := make([]error, len(nodes))
 	results := make([]string, len(nodes))
 	c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
-		session, err := ssh.NewSSHSession(c.user(nodes[i]), c.host(nodes[i]))
+		session, err := c.newSession(nodes[i])
 		if err != nil {
 			errors[i] = err
 			results[i] = err.Error()
@@ -309,7 +323,8 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		}
 
 		if stream {
-			session.Stdout = w
+			session.SetStdout(w)
+			session.SetStderr(w)
 			errors[i] = session.Run(nodeCmd)
 			return nil, nil
 		}
@@ -343,7 +358,7 @@ func (c *SyncedCluster) Wait() error {
 	errs := make([]error, len(c.Nodes))
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
 		for j := 0; j < 600; j++ {
-			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
+			session, err := c.newSession(c.Nodes[i])
 			if err != nil {
 				time.Sleep(500 * time.Millisecond)
 				continue
@@ -386,7 +401,7 @@ func (c *SyncedCluster) CockroachVersions() map[string]int {
 	display := fmt.Sprintf("%s: cockroach version", c.Name)
 	nodes := c.ServerNodes()
 	c.Parallel(display, len(nodes), 0, func(i int) ([]byte, error) {
-		session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(nodes[i]))
+		session, err := c.newSession(c.Nodes[i])
 		if err != nil {
 			return nil, err
 		}
@@ -601,25 +616,88 @@ func (c *SyncedCluster) Get(src, dest string) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 
+			src := src
+			dest := dest
+			if len(c.Nodes) > 1 {
+				base := fmt.Sprintf("%d.%s", c.Nodes[i], filepath.Base(dest))
+				dest = filepath.Join(filepath.Dir(dest), base)
+			}
+
+			progress := func(p float64) {
+				linesMu.Lock()
+				defer linesMu.Unlock()
+				lines[i] = formatProgress(p)
+			}
+
+			if c.IsLocal() {
+				if !filepath.IsAbs(src) {
+					src = filepath.Join(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), c.Nodes[i]), src)
+				}
+
+				var copy func(src, dest string, info os.FileInfo) error
+				copy = func(src, dest string, info os.FileInfo) error {
+					if info.IsDir() {
+						if err := os.MkdirAll(dest, info.Mode()); err != nil {
+							return err
+						}
+
+						infos, err := ioutil.ReadDir(src)
+						if err != nil {
+							return err
+						}
+
+						for _, info := range infos {
+							if err := copy(
+								filepath.Join(src, info.Name()),
+								filepath.Join(dest, info.Name()),
+								info,
+							); err != nil {
+								return err
+							}
+						}
+						return nil
+					}
+
+					if !info.Mode().IsRegular() {
+						return nil
+					}
+
+					out, err := os.Create(dest)
+					if err != nil {
+						return err
+					}
+					defer out.Close()
+
+					if err := os.Chmod(out.Name(), info.Mode()); err != nil {
+						return err
+					}
+
+					in, err := os.Open(src)
+					if err != nil {
+						return err
+					}
+					defer in.Close()
+
+					p := &ssh.ProgressWriter{out, 0, info.Size(), progress}
+					_, err = io.Copy(p, in)
+					return err
+				}
+
+				info, err := os.Stat(src)
+				if err != nil {
+					results <- result{i, err}
+					return
+				}
+				err = copy(src, dest, info)
+				results <- result{i, err}
+				return
+			}
+
+			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
 			if err == nil {
 				defer session.Close()
-				src := src
-				dest := dest
-
-				if c.IsLocal() && !filepath.IsAbs(src) {
-					src = filepath.Join(fmt.Sprintf("local/%d", c.Nodes[i]), src)
-				}
-				if len(c.Nodes) > 1 {
-					base := fmt.Sprintf("%d.%s", c.Nodes[i], filepath.Base(dest))
-					dest = filepath.Join(filepath.Dir(dest), base)
-				}
-				err = ssh.SCPGet(src, dest, func(p float64) {
-					linesMu.Lock()
-					defer linesMu.Unlock()
-					lines[i] = formatProgress(p)
-				}, session)
+				err = ssh.SCPGet(src, dest, progress, session)
 			}
 			results <- result{i, err}
 		}(i)
@@ -759,7 +837,7 @@ func (c *SyncedCluster) stopLoad() {
 
 	display := fmt.Sprintf("%s: stopping load", c.Name)
 	c.Parallel(display, 1, 0, func(i int) ([]byte, error) {
-		session, err := ssh.NewSSHSession(c.user(c.LoadGen), c.host(c.LoadGen))
+		session, err := c.newSession(c.LoadGen)
 		if err != nil {
 			return nil, err
 		}
