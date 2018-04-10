@@ -24,8 +24,11 @@ var StartOpts struct {
 type Cockroach struct{}
 
 func cockroachNodeBinary(c *SyncedCluster, i int) string {
-	if !c.IsLocal() || filepath.IsAbs(config.Binary) {
+	if filepath.IsAbs(config.Binary) {
 		return config.Binary
+	}
+	if !c.IsLocal() {
+		return "./" + config.Binary
 	}
 
 	path := filepath.Join(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), i), config.Binary)
