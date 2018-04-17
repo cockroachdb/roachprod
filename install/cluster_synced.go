@@ -795,32 +795,42 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 		}
 	}
 
-	allArgs := []string{
-		"ssh",
-		fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.host(c.Nodes[0])),
-		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
-		"-o", "StrictHostKeyChecking=no",
-	}
-	allArgs = append(allArgs, sshArgs...)
-	if c.IsLocal() {
-		cmd := fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0])
-		if len(args) == 0 /* interactive */ {
-			allArgs = append(allArgs, "-t")
-			cmd += "bash "
-		}
-		allArgs = append(allArgs, cmd)
-	}
-	if len(args) > 0 {
-		allArgs = append(allArgs, fmt.Sprintf("export ROACHPROD=%d%s ;", c.Nodes[0], c.Tag))
-	}
-
 	// Perform template expansion on the arguments.
 	e := expander{
 		node: c.Nodes[0],
 	}
+	var expandedArgs []string
 	for _, arg := range args {
 		arg = e.expand(c, arg)
-		allArgs = append(allArgs, strings.Split(arg, " ")...)
+		expandedArgs = append(expandedArgs, strings.Split(arg, " ")...)
+	}
+
+	var allArgs []string
+	if c.IsLocal() {
+		allArgs = []string{
+			"/bin/bash", "-c",
+		}
+		cmd := fmt.Sprintf("cd ${HOME}/local/%d ; ", c.Nodes[0])
+		if len(args) == 0 /* interactive */ {
+			cmd += "/bin/bash "
+		}
+		if len(args) > 0 {
+			cmd += fmt.Sprintf("export ROACHPROD=%d%s ; ", c.Nodes[0], c.Tag)
+			cmd += strings.Join(expandedArgs, " ")
+		}
+		allArgs = append(allArgs, cmd)
+	} else {
+		allArgs = []string{
+			"ssh",
+			fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.host(c.Nodes[0])),
+			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+			"-o", "StrictHostKeyChecking=no",
+		}
+		allArgs = append(allArgs, sshArgs...)
+		if len(args) > 0 {
+			allArgs = append(allArgs, fmt.Sprintf("export ROACHPROD=%d%s ;", c.Nodes[0], c.Tag))
+		}
+		allArgs = append(allArgs, expandedArgs...)
 	}
 
 	sshPath, err := exec.LookPath(allArgs[0])
