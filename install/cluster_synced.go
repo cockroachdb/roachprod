@@ -51,6 +51,7 @@ type SyncedCluster struct {
 	Args    []string
 	Tag     string
 	Impl    ClusterImpl
+	UseSCP  bool
 }
 
 func (c *SyncedCluster) host(index int) string {
@@ -480,7 +481,11 @@ func formatProgress(p float64) string {
 func (c *SyncedCluster) Put(src, dest string) {
 	// TODO(peter): Only put 10 nodes at a time. When a node completes, output a
 	// line indicating that.
-	fmt.Printf("%s: putting %s %s\n", c.Name, src, dest)
+	var detail string
+	if c.UseSCP {
+		detail = " (scp)"
+	}
+	fmt.Printf("%s: putting%s %s %s\n", c.Name, detail, src, dest)
 
 	type result struct {
 		index int
@@ -497,6 +502,15 @@ func (c *SyncedCluster) Put(src, dest string) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
+
+			if c.UseSCP {
+				to := dest
+				if c.IsLocal() {
+					to = fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d/%s"), c.Nodes[i], dest)
+				}
+				err := c.scp(src, fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[i]), c.host(c.Nodes[i]), to))
+				results <- result{i, err}
+			}
 
 			if c.IsLocal() {
 				if _, err := os.Stat(src); err != nil {
@@ -599,7 +613,11 @@ func (c *SyncedCluster) Put(src, dest string) {
 func (c *SyncedCluster) Get(src, dest string) {
 	// TODO(peter): Only get 10 nodes at a time. When a node completes, output a
 	// line indicating that.
-	fmt.Printf("%s: getting %s %s\n", c.Name, src, dest)
+	var detail string
+	if c.UseSCP {
+		detail = " (scp)"
+	}
+	fmt.Printf("%s: getting%s %s %s\n", c.Name, detail, src, dest)
 
 	type result struct {
 		index int
@@ -634,7 +652,15 @@ func (c *SyncedCluster) Get(src, dest string) {
 				if !filepath.IsAbs(src) {
 					src = filepath.Join(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), c.Nodes[i]), src)
 				}
+			}
 
+			if c.UseSCP {
+				err := c.scp(fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[0]), c.host(c.Nodes[i]), src), dest)
+				results <- result{i, err}
+				return
+			}
+
+			if c.IsLocal() {
 				var copy func(src, dest string, info os.FileInfo) error
 				copy = func(src, dest string, info os.FileInfo) error {
 					if info.IsDir() {
@@ -838,6 +864,21 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 		return err
 	}
 	return syscall.Exec(sshPath, allArgs, os.Environ())
+}
+
+func (c *SyncedCluster) scp(src, dest string) error {
+	args := []string{
+		"scp", "-r", "-C",
+		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+		"-o", "StrictHostKeyChecking=no",
+		src, dest,
+	}
+	cmd := exec.Command(args[0], args[1:]...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return errors.Wrapf(err, "~ %s\n%s", strings.Join(args, " "), out)
+	}
+	return nil
 }
 
 func (c *SyncedCluster) stopLoad() {

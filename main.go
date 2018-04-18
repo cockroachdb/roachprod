@@ -65,6 +65,7 @@ var (
 	tag            string
 	external       = false
 	adminurlOpen   = false
+	useSCP         = true
 )
 
 func sortedClusters() []string {
@@ -142,6 +143,7 @@ Hint: use "roachprod sync" to update the list of available clusters.
 	if tag != "" {
 		c.Tag = "/" + tag
 	}
+	c.UseSCP = useSCP
 	return c, nil
 }
 
@@ -1173,6 +1175,13 @@ func main() {
 	} {
 		cmd.Flags().StringVar(
 			&tag, "tag", "", "the process tag")
+	}
+
+	for _, cmd := range []*cobra.Command{
+		startCmd, putCmd, getCmd,
+	} {
+		cmd.Flags().BoolVar(
+			&useSCP, "scp", useSCP, "use scp for file transfers")
 	}
 
 	for _, cmd := range []*cobra.Command{
