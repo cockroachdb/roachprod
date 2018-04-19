@@ -867,8 +867,7 @@ var runCmd = &cobra.Command{
 		if len(title) > 30 {
 			title = title[:27] + "..."
 		}
-		_ = c.Run(os.Stdout, c.Nodes, title, cmd)
-		return nil
+		return c.Run(os.Stdout, c.Nodes, title, cmd)
 	}),
 }
 
