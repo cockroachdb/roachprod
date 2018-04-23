@@ -293,7 +293,7 @@ done
 	return ch
 }
 
-func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
+func (c *SyncedCluster) Run(stdout, stderr io.Writer, nodes []int, title, cmd string) error {
 	// Stream output if we're running the command on only 1 node.
 	stream := len(nodes) == 1
 	var display string
@@ -324,8 +324,8 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 		}
 
 		if stream {
-			session.SetStdout(w)
-			session.SetStderr(w)
+			session.SetStdout(stdout)
+			session.SetStderr(stderr)
 			errors[i] = session.Run(nodeCmd)
 			return nil, nil
 		}
@@ -342,7 +342,7 @@ func (c *SyncedCluster) Run(w io.Writer, nodes []int, title, cmd string) error {
 
 	if !stream {
 		for i, r := range results {
-			fmt.Fprintf(w, "  %2d: %s\n", nodes[i], r)
+			fmt.Fprintf(stdout, "  %2d: %s\n", nodes[i], r)
 		}
 	}
 

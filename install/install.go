@@ -13,7 +13,7 @@ var Clusters = map[string]*SyncedCluster{}
 func Install(c *SyncedCluster, args []string) error {
 	do := func(title, cmd string) error {
 		var buf bytes.Buffer
-		err := c.Run(&buf, c.Nodes, "installing "+title, cmd)
+		err := c.Run(&buf, &buf, c.Nodes, "installing "+title, cmd)
 		if err != nil {
 			fmt.Print(buf.String())
 		}
