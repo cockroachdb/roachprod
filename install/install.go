@@ -53,6 +53,17 @@ sudo chmod +x /etc/profile.d/go.sh
 		case "mongodb":
 			return fmt.Errorf("TODO(peter): unimplemented: mongodb")
 
+		case "ntp":
+			cmd := `
+sudo apt-get update;
+sudo apt-get install -y \
+  ntp \
+  ntpdate \
+`
+			if err := do("ntp", cmd); err != nil {
+				return err
+			}
+
 		case "postgres":
 			return fmt.Errorf("TODO(peter): unimplemented: postgres")
 

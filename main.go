@@ -903,6 +903,7 @@ var installCmd = &cobra.Command{
 
   cassandra
   mongodb
+  ntp
   postgres
   tools (fio, iftop, perf)
 `,
