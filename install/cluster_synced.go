@@ -482,7 +482,7 @@ func (c *SyncedCluster) Put(src, dest string) {
 	// TODO(peter): Only put 10 nodes at a time. When a node completes, output a
 	// line indicating that.
 	var detail string
-	if c.UseSCP {
+	if !c.IsLocal() && c.UseSCP {
 		detail = " (scp)"
 	}
 	fmt.Printf("%s: putting%s %s %s\n", c.Name, detail, src, dest)
@@ -503,15 +503,6 @@ func (c *SyncedCluster) Put(src, dest string) {
 		go func(i int) {
 			defer wg.Done()
 
-			if c.UseSCP {
-				to := dest
-				if c.IsLocal() {
-					to = fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d/%s"), c.Nodes[i], dest)
-				}
-				err := c.scp(src, fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[i]), c.host(c.Nodes[i]), to))
-				results <- result{i, err}
-			}
-
 			if c.IsLocal() {
 				if _, err := os.Stat(src); err != nil {
 					results <- result{i, err}
@@ -528,6 +519,15 @@ func (c *SyncedCluster) Put(src, dest string) {
 				_ = os.Remove(to)
 				results <- result{i, os.Symlink(from, to)}
 				return
+			}
+
+			if c.UseSCP {
+				to := dest
+				if c.IsLocal() {
+					to = fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d/%s"), c.Nodes[i], dest)
+				}
+				err := c.scp(src, fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[i]), c.host(c.Nodes[i]), to))
+				results <- result{i, err}
 			}
 
 			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
@@ -614,7 +614,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 	// TODO(peter): Only get 10 nodes at a time. When a node completes, output a
 	// line indicating that.
 	var detail string
-	if c.UseSCP {
+	if !c.IsLocal() && c.UseSCP {
 		detail = " (scp)"
 	}
 	fmt.Printf("%s: getting%s %s %s\n", c.Name, detail, src, dest)
