@@ -652,15 +652,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 				if !filepath.IsAbs(src) {
 					src = filepath.Join(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), c.Nodes[i]), src)
 				}
-			}
 
-			if c.UseSCP {
-				err := c.scp(fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[0]), c.host(c.Nodes[i]), src), dest)
-				results <- result{i, err}
-				return
-			}
-
-			if c.IsLocal() {
 				var copy func(src, dest string, info os.FileInfo) error
 				copy = func(src, dest string, info os.FileInfo) error {
 					if info.IsDir() {
@@ -716,6 +708,12 @@ func (c *SyncedCluster) Get(src, dest string) {
 					return
 				}
 				err = copy(src, dest, info)
+				results <- result{i, err}
+				return
+			}
+
+			if c.UseSCP {
+				err := c.scp(fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[0]), c.host(c.Nodes[i]), src), dest)
 				results <- result{i, err}
 				return
 			}
