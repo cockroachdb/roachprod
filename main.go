@@ -881,7 +881,7 @@ var testCmd = &cobra.Command{
 Alternately, an interrupted test can be resumed by specifying the output
 directory of a previous test. For example:
 
-	roachperf test denim kv_0.cockroach-6151ae1
+	roachprod test denim kv_0.cockroach-6151ae1
 
 will restart the kv_0 test on denim using the cockroach binary with the build
 tag 6151ae1.`,
@@ -1219,7 +1219,7 @@ Node specification
   of <nodes> is a comma separated list of specific node IDs or range of
   IDs. For example:
 
-    roachperf %[1]s marc-test:1-3,8-9
+    roachprod %[1]s marc-test:1-3,8-9
 
   will perform %[1]s on:
 
