@@ -35,6 +35,15 @@ sudo service cassandra stop;
 				return err
 			}
 
+		case "gcc":
+			cmd := `
+sudo apt-get update;
+sudo apt-get install -y gcc;
+`
+			if err := do("gcc", cmd); err != nil {
+				return err
+			}
+
 		case "go":
 			// graphviz and rlwrap are useful for pprof
 			cmd := `
@@ -58,7 +67,7 @@ sudo chmod +x /etc/profile.d/go.sh
 sudo apt-get update;
 sudo apt-get install -y \
   ntp \
-  ntpdate \
+  ntpdate;
 `
 			if err := do("ntp", cmd); err != nil {
 				return err
