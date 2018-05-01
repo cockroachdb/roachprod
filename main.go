@@ -902,6 +902,7 @@ var installCmd = &cobra.Command{
 	Long: `Install third party software. Currently available installation options are:
 
   cassandra
+  gcc
   mongodb
   ntp
   postgres
