@@ -10,6 +10,7 @@ var parameterRe = regexp.MustCompile(`{[^}]*}`)
 var pgURLRe = regexp.MustCompile(`{pgurl(:[-,0-9]+)?}`)
 var pgPortRe = regexp.MustCompile(`{pgport(:[-,0-9]+)?}`)
 var storeDirRe = regexp.MustCompile(`{store-dir}`)
+var secureFlagRe = regexp.MustCompile(`{secure-flag}`)
 
 type expander struct {
 	node    int
@@ -74,6 +75,13 @@ func (e *expander) maybeExpandStoreDir(c *SyncedCluster, s string) (string, bool
 	return c.Impl.NodeDir(c, e.node), true
 }
 
+func (e *expander) maybeExpandSecureFlag(c *SyncedCluster, s string) (string, bool) {
+	if !secureFlagRe.MatchString(s) {
+		return s, false
+	}
+	return c.Impl.SecureFlag(c, e.node), true
+}
+
 func (e *expander) expand(c *SyncedCluster, arg string) string {
 	return parameterRe.ReplaceAllStringFunc(arg, func(s string) string {
 		type expanderFunc func(*SyncedCluster, string) (string, bool)
@@ -81,6 +89,7 @@ func (e *expander) expand(c *SyncedCluster, arg string) string {
 			e.maybeExpandPgURL,
 			e.maybeExpandPgPort,
 			e.maybeExpandStoreDir,
+			e.maybeExpandSecureFlag,
 		}
 		for _, f := range expanders {
 			s, expanded := f(c, s)

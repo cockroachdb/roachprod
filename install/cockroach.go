@@ -407,6 +407,17 @@ func (Cockroach) NodeDir(c *SyncedCluster, index int) string {
 	return "/mnt/data1/cockroach"
 }
 
+func (Cockroach) SecureFlag(c *SyncedCluster, index int) string {
+	if !c.Secure {
+		return "--insecure"
+	}
+
+	if c.IsLocal() {
+		return fmt.Sprintf("--certs-dir=${HOME}/local/%d/certs", index)
+	}
+	return "--certs-dir=certs"
+}
+
 func (Cockroach) NodeURL(c *SyncedCluster, host string, port int) string {
 	url := fmt.Sprintf("'postgres://root@%s:%d", host, port)
 	if c.Secure {

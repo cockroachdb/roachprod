@@ -80,6 +80,11 @@ func (Cassandra) NodeDir(c *SyncedCluster, index int) string {
 	return "/mnt/data1/cassandra"
 }
 
+func (Cassandra) SecureFlag(c *SyncedCluster, index int) string {
+	// TODO(mberhault): secure mode is not currently support on cassandra.
+	return ""
+}
+
 func (Cassandra) NodeURL(_ *SyncedCluster, host string, port int) string {
 	return fmt.Sprintf("'cassandra://%s:%d'", host, port)
 }
