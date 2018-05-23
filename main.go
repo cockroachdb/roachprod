@@ -65,6 +65,7 @@ var (
 	tag            string
 	external       = false
 	adminurlOpen   = false
+	useTreeDist    = true
 )
 
 func sortedClusters() []string {
@@ -142,6 +143,7 @@ Hint: use "roachprod sync" to update the list of available clusters.
 	if tag != "" {
 		c.Tag = "/" + tag
 	}
+	c.UseTreeDist = useTreeDist
 	return c, nil
 }
 
@@ -1179,10 +1181,11 @@ func main() {
 	for _, cmd := range []*cobra.Command{
 		startCmd, putCmd, getCmd,
 	} {
-		var useSCP bool
-		cmd.Flags().BoolVar(&useSCP, "scp", useSCP, "DEPRECATED")
+		cmd.Flags().BoolVar(new(bool), "scp", false, "DEPRECATED")
 		cmd.Flags().MarkDeprecated("scp", "always true")
 	}
+
+	putCmd.Flags().BoolVar(&useTreeDist, "treedist", useTreeDist, "use treedist copy algorithm")
 
 	for _, cmd := range []*cobra.Command{
 		getCmd, putCmd, runCmd, startCmd, statusCmd, stopCmd, testCmd,

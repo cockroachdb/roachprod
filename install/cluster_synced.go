@@ -44,13 +44,14 @@ type SyncedCluster struct {
 	Localities []string
 	VPCs       []string
 	// all other fields are populated in newCluster.
-	Nodes   []int
-	LoadGen int
-	Secure  bool
-	Env     string
-	Args    []string
-	Tag     string
-	Impl    ClusterImpl
+	Nodes       []int
+	LoadGen     int
+	Secure      bool
+	Env         string
+	Args        []string
+	Tag         string
+	Impl        ClusterImpl
+	UseTreeDist bool
 }
 
 func (c *SyncedCluster) host(index int) string {
@@ -478,13 +479,17 @@ func formatProgress(p float64) string {
 }
 
 func (c *SyncedCluster) Put(src, dest string) {
-	// TODO(peter): Do something akin to treedist. Copy src to first node. Then
-	// copy from first node to 2 nodes. Repeat. Keep 2 outstanding copies from
-	// each source. Only use the local node for the initial copy.
+	// NB: This value was determined with a few experiments. Higher values were
+	// not tested.
+	const treeDistFanout = 10
 
 	var detail string
 	if !c.IsLocal() {
-		detail = " (scp)"
+		if c.UseTreeDist {
+			detail = " (dist)"
+		} else {
+			detail = " (scp)"
+		}
 	}
 	fmt.Printf("%s: putting%s %s %s\n", c.Name, detail, src, dest)
 
@@ -493,14 +498,43 @@ func (c *SyncedCluster) Put(src, dest string) {
 		err   error
 	}
 
-	var writer ui.Writer
 	results := make(chan result, len(c.Nodes))
 	lines := make([]string, len(c.Nodes))
 	var linesMu sync.Mutex
-
 	var wg sync.WaitGroup
+	wg.Add(len(c.Nodes))
+
+	// Each destination for the copy needs a source to copy from. We create a
+	// channel that has capacity for each destination. If we try to add a source
+	// and the channel is full we can simply drop that source as we know we won't
+	// need to use it.
+	sources := make(chan int, len(c.Nodes))
+	pushSource := func(i int) {
+		select {
+		case sources <- i:
+		default:
+		}
+	}
+
+	if c.UseTreeDist {
+		// In treedist mode, only add the local source initially.
+		pushSource(-1)
+	} else {
+		// In non-treedist mode, add the local source N times (once for each
+		// destination).
+		for range c.Nodes {
+			pushSource(-1)
+		}
+	}
+
+	mkpath := func(i int) string {
+		if i == -1 {
+			return src
+		}
+		return fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[i]), c.host(c.Nodes[i]), dest)
+	}
+
 	for i := range c.Nodes {
-		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
 
@@ -522,12 +556,29 @@ func (c *SyncedCluster) Put(src, dest string) {
 				return
 			}
 
-			to := dest
-			if c.IsLocal() {
-				to = fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d/%s"), c.Nodes[i], dest)
-			}
-			err := c.scp(src, fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[i]), c.host(c.Nodes[i]), to))
+			// Determine the source to copy from.
+			srcIndex := <-sources
+			from := mkpath(srcIndex)
+			// TODO(peter): For remote-to-remote copies, should the destination use
+			// the internal IP address? The external address works, but it might be
+			// slower.
+			to := mkpath(i)
+			err := c.scp(from, to)
 			results <- result{i, err}
+
+			if err != nil {
+				// The copy failed. Re-add the original source.
+				pushSource(srcIndex)
+			} else {
+				// The copy failed. Re-add the original source if it is remote.
+				if srcIndex != -1 {
+					pushSource(srcIndex)
+				}
+				// Add fanout number of new sources for the destination.
+				for j := 0; j < treeDistFanout; j++ {
+					pushSource(i)
+				}
+			}
 		}(i)
 	}
 
@@ -536,6 +587,7 @@ func (c *SyncedCluster) Put(src, dest string) {
 		close(results)
 	}()
 
+	var writer ui.Writer
 	var ticker *time.Ticker
 	if ui.IsStdoutTerminal {
 		ticker = time.NewTicker(100 * time.Millisecond)
@@ -843,11 +895,35 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 }
 
 func (c *SyncedCluster) scp(src, dest string) error {
-	args := []string{
-		"scp", "-r", "-C",
-		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
-		"-o", "StrictHostKeyChecking=no",
-		src, dest,
+	var args []string
+	if strings.Contains(src, "@") {
+		// A remote to remote copy.
+		parts := strings.Split(src, ":")
+		if len(parts) != 2 {
+			return errors.Errorf("unable to parse src: %s", src)
+		}
+		// Note that we don't specify compression (-C) for the remote to remote
+		// copy as bandwidth seems to be cheaper than cpu.
+		args = []string{
+			"ssh",
+			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "ForwardAgent=yes",
+			parts[0],
+			"--",
+			"scp", "-r",
+			"-o", "StrictHostKeyChecking=no",
+			parts[1], dest,
+		}
+	} else {
+		// A local to remote copy.
+		args = []string{
+			"scp", "-r", "-C",
+			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "ForwardAgent=yes",
+			src, dest,
+		}
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	out, err := cmd.CombinedOutput()
