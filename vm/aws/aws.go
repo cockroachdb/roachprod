@@ -365,7 +365,8 @@ func (p *Provider) listRegion(region string) (vm.List, error) {
 					Key   string
 					Value string
 				}
-				VpcId string
+				VpcId        string
+				InstanceType string
 			}
 		}
 	}
@@ -414,18 +415,19 @@ func (p *Provider) listRegion(region string) (vm.List, error) {
 			}
 
 			m := vm.VM{
-				CreatedAt:  createdAt,
-				DNS:        in.PrivateDnsName,
-				Name:       tagMap["Name"],
-				Errors:     errs,
-				Lifetime:   lifetime,
-				PrivateIP:  in.PrivateIpAddress,
-				Provider:   ProviderName,
-				ProviderID: in.InstanceId,
-				PublicIP:   in.PublicIpAddress,
-				RemoteUser: p.opts.RemoteUserName,
-				VPC:        in.VpcId,
-				Zone:       in.Placement.AvailabilityZone,
+				CreatedAt:   createdAt,
+				DNS:         in.PrivateDnsName,
+				Name:        tagMap["Name"],
+				Errors:      errs,
+				Lifetime:    lifetime,
+				PrivateIP:   in.PrivateIpAddress,
+				Provider:    ProviderName,
+				ProviderID:  in.InstanceId,
+				PublicIP:    in.PublicIpAddress,
+				RemoteUser:  p.opts.RemoteUserName,
+				VPC:         in.VpcId,
+				MachineType: in.InstanceType,
+				Zone:        in.Placement.AvailabilityZone,
 			}
 			ret = append(ret, m)
 		}

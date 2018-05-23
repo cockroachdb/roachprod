@@ -65,7 +65,8 @@ type jsonVM struct {
 			NatIP string
 		}
 	}
-	Zone string
+	MachineType string
+	Zone        string
 }
 
 // Convert the JSON VM data into our common VM type
@@ -97,10 +98,13 @@ func (jsonVM *jsonVM) toVM(project string) *vm.VM {
 		}
 	}
 
-	// This is splitting and taking the last part of a url path,
-	// which is the zone.
-	zones := strings.Split(jsonVM.Zone, "/")
-	zone := zones[len(zones)-1]
+	// This is splitting and taking the last part of a url path.
+	lastComponent := func(url string) string {
+		s := strings.Split(url, "/")
+		return s[len(s)-1]
+	}
+	machineType := lastComponent(jsonVM.MachineType)
+	zone := lastComponent(jsonVM.Zone)
 
 	return &vm.VM{
 		Name:       jsonVM.Name,
@@ -114,9 +118,10 @@ func (jsonVM *jsonVM) toVM(project string) *vm.VM {
 		PublicIP:   publicIP,
 		// N.B. gcloud uses the local username to log into instances rather
 		// than the username on the authenticated Google account.
-		RemoteUser: config.OSUser.Username,
-		VPC:        vpc,
-		Zone:       zone,
+		RemoteUser:  config.OSUser.Username,
+		VPC:         vpc,
+		MachineType: machineType,
+		Zone:        zone,
 	}
 }
 

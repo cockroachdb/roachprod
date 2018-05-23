@@ -36,8 +36,9 @@ type VM struct {
 	// to one another via private IP addresses.  We use this later on
 	// when determining whether or not cluster member should advertise
 	// their public or private IP.
-	VPC  string
-	Zone string
+	VPC         string
+	MachineType string
+	Zone        string
 }
 
 // Error values for VM.Error
