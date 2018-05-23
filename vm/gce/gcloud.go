@@ -84,6 +84,16 @@ func (jsonVM *jsonVM) toVM(project string) *vm.VM {
 		vmErrors = append(vmErrors, vm.ErrNoExpiration)
 	}
 
+	// lastComponent splits a url path and returns only the last part. This is
+	// used because some of the fields in jsonVM are defined using URLs like:
+	//  "https://www.googleapis.com/compute/v1/projects/cockroach-shared/zones/us-east1-b/machineTypes/n1-standard-16"
+	// We want to strip this down to "n1-standard-16", so we only want the last
+	// component.
+	lastComponent := func(url string) string {
+		s := strings.Split(url, "/")
+		return s[len(s)-1]
+	}
+
 	// Extract network information
 	var publicIP, privateIP, vpc string
 	if len(jsonVM.NetworkInterfaces) == 0 {
@@ -94,15 +104,10 @@ func (jsonVM *jsonVM) toVM(project string) *vm.VM {
 			vmErrors = append(vmErrors, vm.ErrBadNetwork)
 		} else {
 			publicIP = jsonVM.NetworkInterfaces[0].AccessConfigs[0].NatIP
-			vpc = jsonVM.NetworkInterfaces[0].Network
+			vpc = lastComponent(jsonVM.NetworkInterfaces[0].Network)
 		}
 	}
 
-	// This is splitting and taking the last part of a url path.
-	lastComponent := func(url string) string {
-		s := strings.Split(url, "/")
-		return s[len(s)-1]
-	}
 	machineType := lastComponent(jsonVM.MachineType)
 	zone := lastComponent(jsonVM.Zone)
 
