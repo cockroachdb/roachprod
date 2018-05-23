@@ -51,7 +51,6 @@ type SyncedCluster struct {
 	Args    []string
 	Tag     string
 	Impl    ClusterImpl
-	UseSCP  bool
 }
 
 func (c *SyncedCluster) host(index int) string {
@@ -479,10 +478,12 @@ func formatProgress(p float64) string {
 }
 
 func (c *SyncedCluster) Put(src, dest string) {
-	// TODO(peter): Only put 10 nodes at a time. When a node completes, output a
-	// line indicating that.
+	// TODO(peter): Do something akin to treedist. Copy src to first node. Then
+	// copy from first node to 2 nodes. Repeat. Keep 2 outstanding copies from
+	// each source. Only use the local node for the initial copy.
+
 	var detail string
-	if !c.IsLocal() && c.UseSCP {
+	if !c.IsLocal() {
 		detail = " (scp)"
 	}
 	fmt.Printf("%s: putting%s %s %s\n", c.Name, detail, src, dest)
@@ -521,24 +522,11 @@ func (c *SyncedCluster) Put(src, dest string) {
 				return
 			}
 
-			if c.UseSCP {
-				to := dest
-				if c.IsLocal() {
-					to = fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d/%s"), c.Nodes[i], dest)
-				}
-				err := c.scp(src, fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[i]), c.host(c.Nodes[i]), to))
-				results <- result{i, err}
+			to := dest
+			if c.IsLocal() {
+				to = fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d/%s"), c.Nodes[i], dest)
 			}
-
-			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
-			if err == nil {
-				defer session.Close()
-				err = ssh.SCPPut(src, dest, func(p float64) {
-					linesMu.Lock()
-					defer linesMu.Unlock()
-					lines[i] = formatProgress(p)
-				}, session)
-			}
+			err := c.scp(src, fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[i]), c.host(c.Nodes[i]), to))
 			results <- result{i, err}
 		}(i)
 	}
@@ -614,7 +602,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 	// TODO(peter): Only get 10 nodes at a time. When a node completes, output a
 	// line indicating that.
 	var detail string
-	if !c.IsLocal() && c.UseSCP {
+	if !c.IsLocal() {
 		detail = " (scp)"
 	}
 	fmt.Printf("%s: getting%s %s %s\n", c.Name, detail, src, dest)
@@ -712,17 +700,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 				return
 			}
 
-			if c.UseSCP {
-				err := c.scp(fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[0]), c.host(c.Nodes[i]), src), dest)
-				results <- result{i, err}
-				return
-			}
-
-			session, err := ssh.NewSSHSession(c.user(c.Nodes[i]), c.host(c.Nodes[i]))
-			if err == nil {
-				defer session.Close()
-				err = ssh.SCPGet(src, dest, progress, session)
-			}
+			err := c.scp(fmt.Sprintf("%s@%s:%s", c.user(c.Nodes[0]), c.host(c.Nodes[i]), src), dest)
 			results <- result{i, err}
 		}(i)
 	}
