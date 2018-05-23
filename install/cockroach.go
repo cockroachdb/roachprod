@@ -207,17 +207,7 @@ tar cvf certs.tar certs
 				defer os.Remove(tmpfile.Name()) // clean up
 
 				if err := func() error {
-					if c.UseSCP {
-						return c.scp(fmt.Sprintf("%s@%s:certs.tar", c.user(1), c.host(1)), tmpfile.Name())
-					}
-
-					session, err := ssh.NewSSHSession(c.user(1), c.host(1))
-					if err != nil {
-						return err
-					}
-					defer session.Close()
-					return ssh.SCPGet(filepath.Join(dir, "certs.tar"),
-						tmpfile.Name(), func(float64) {}, session)
+					return c.scp(fmt.Sprintf("%s@%s:certs.tar", c.user(1), c.host(1)), tmpfile.Name())
 				}(); err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					os.Exit(1)
