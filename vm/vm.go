@@ -15,30 +15,30 @@ import (
 // A VM is an abstract representation of a specific machine instance.  This type is used across
 // the various cloud providers supported by roachprod.
 type VM struct {
-	Name      string
-	CreatedAt time.Time
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
 	// If non-empty, indicates that some or all of the data in the VM instance
 	// is not present or otherwise invalid.
-	Errors   []error
-	Lifetime time.Duration
+	Errors   []error       `json:"errors"`
+	Lifetime time.Duration `json:"lifetime"`
 	// The provider-internal DNS name for the VM instance
-	DNS string
+	DNS string `json:"dns"`
 	// The name of the cloud provider that hosts the VM instance
-	Provider string
+	Provider string `json:"provider"`
 	// The provider-specific id for the instance.  This may or may not be the same as Name, depending
 	// on whether or not the cloud provider automatically assigns VM identifiers.
-	ProviderID string
-	PrivateIP  string
-	PublicIP   string
+	ProviderID string `json:"provider_id"`
+	PrivateIP  string `json:"private_ip"`
+	PublicIP   string `json:"public_ip"`
 	// The username that should be used to connect to the VM.
-	RemoteUser string
+	RemoteUser string `json:"remote_user"`
 	// The VPC value defines an equivalency set for VMs that can route
 	// to one another via private IP addresses.  We use this later on
 	// when determining whether or not cluster member should advertise
 	// their public or private IP.
-	VPC         string
-	MachineType string
-	Zone        string
+	VPC         string `json:"vpc"`
+	MachineType string `json:"machine_type"`
+	Zone        string `json:"zone"`
 }
 
 // Error values for VM.Error
