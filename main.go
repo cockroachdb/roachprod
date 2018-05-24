@@ -65,7 +65,7 @@ var (
 	tag            string
 	external       = false
 	adminurlOpen   = false
-	useTreeDist    = true
+	useTreeDist    = false
 )
 
 func sortedClusters() []string {
