@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -57,6 +58,7 @@ var (
 	dryrun         bool
 	extendLifetime time.Duration
 	listDetails    bool
+	listJSON       bool
 	listMine       bool
 	clusterType    = "cockroach"
 	secure         = false
@@ -324,7 +326,7 @@ Local Clusters
 					}
 				}
 
-				if err := syncAll(cloud); err != nil {
+				if err := syncAll(cloud, false /* quiet */); err != nil {
 					return err
 				}
 			}
@@ -453,7 +455,7 @@ The third and fourth columns are the number of nodes in the cluster and the
 time remaining before the cluster will be automatically destroyed. Note that
 local clusters do not have an expiration.
 
-The --details adjusts the output format to include per-node details:
+The --details flag adjusts the output format to include per-node details:
 
   ~ roachprod list --details
   local [local]: (no expiration)
@@ -468,6 +470,8 @@ The --details adjusts the output format to include per-node details:
 The first and second column are the node hostname and fully qualified name
 respectively. The third and fourth column are the private and public IP
 addresses.
+
+The --json flag sets the format of the command output to json.
 
 Listing clusters has the side-effect of syncing ssh keys/configs and the local
 hosts file.
@@ -524,47 +528,61 @@ hosts file.
 		for name := range cloud.Clusters {
 			if listPattern.MatchString(name) {
 				names = append(names, name)
+			} else {
+				delete(cloud.Clusters, name)
 			}
 		}
 		sort.Strings(names)
 
-		// Align columns left and separate with at least two spaces.
-		tw := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
-		for _, name := range names {
-			c := cloud.Clusters[name]
+		if listJSON {
 			if listDetails {
-				c.PrintDetails()
-			} else {
-				fmt.Fprintf(tw, "%s:\t%s\t%d", c.Name, c.Clouds(), len(c.VMs))
-				if !c.IsLocal() {
-					fmt.Fprintf(tw, "\t(%s)", c.LifetimeRemaining().Round(time.Second))
+				return errors.New("--json cannot be combined with --detail")
+			}
+
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			if err := enc.Encode(cloud); err != nil {
+				return err
+			}
+		} else {
+			// Align columns left and separate with at least two spaces.
+			tw := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
+			for _, name := range names {
+				c := cloud.Clusters[name]
+				if listDetails {
+					c.PrintDetails()
 				} else {
-					fmt.Fprintf(tw, "\t(-)")
+					fmt.Fprintf(tw, "%s:\t%s\t%d", c.Name, c.Clouds(), len(c.VMs))
+					if !c.IsLocal() {
+						fmt.Fprintf(tw, "\t(%s)", c.LifetimeRemaining().Round(time.Second))
+					} else {
+						fmt.Fprintf(tw, "\t(-)")
+					}
+					fmt.Fprintf(tw, "\n")
 				}
-				fmt.Fprintf(tw, "\n")
+			}
+			if err := tw.Flush(); err != nil {
+				return err
+			}
+
+			// Optionally print any dangling instances with errors
+			if listDetails {
+				collated := cloud.BadInstanceErrors()
+
+				// Sort by Error() value for stable output
+				var errors ui.ErrorsByError
+				for err := range collated {
+					errors = append(errors, err)
+				}
+				sort.Sort(errors)
+
+				for _, e := range errors {
+					fmt.Printf("%s: %s\n", e, collated[e].Names())
+				}
 			}
 		}
-		if err := tw.Flush(); err != nil {
-			return err
-		}
 
-		// Optionally print any dangling instances with errors
-		if listDetails {
-			collated := cloud.BadInstanceErrors()
-
-			// Sort by Error() value for stable output
-			var errors ui.ErrorsByError
-			for err := range collated {
-				errors = append(errors, err)
-			}
-			sort.Sort(errors)
-
-			for _, e := range errors {
-				fmt.Printf("%s: %s\n", e, collated[e].Names())
-			}
-		}
-
-		return syncAll(cloud)
+		return syncAll(cloud, listJSON /* quiet */)
 	}),
 }
 
@@ -580,7 +598,7 @@ var syncCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return syncAll(cloud)
+		return syncAll(cloud, false /* quiet */)
 	}),
 }
 
@@ -588,8 +606,10 @@ var lockFile = os.ExpandEnv("$HOME/.roachprod/LOCK")
 
 var bashCompletion = os.ExpandEnv("$HOME/.roachprod/bash-completion.sh")
 
-func syncAll(cloud *cld.Cloud) error {
-	fmt.Println("Syncing...")
+func syncAll(cloud *cld.Cloud, quiet bool) error {
+	if !quiet {
+		fmt.Println("Syncing...")
+	}
 
 	// Acquire a filesystem lock so that two concurrent `roachprod sync`
 	// operations don't clobber each other.
@@ -1150,6 +1170,8 @@ func main() {
 
 	listCmd.Flags().BoolVarP(&listDetails,
 		"details", "d", false, "Show cluster details")
+	listCmd.Flags().BoolVar(&listJSON,
+		"json", false, "Show cluster specs in a json format")
 	listCmd.Flags().BoolVarP(&listMine,
 		"mine", "m", false, "Show only clusters belonging to the current user")
 

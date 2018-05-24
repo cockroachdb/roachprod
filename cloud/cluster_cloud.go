@@ -15,10 +15,10 @@ import (
 const vmNameFormat = "user-<clusterid>-<nodeid>"
 
 type Cloud struct {
-	Clusters map[string]*CloudCluster
+	Clusters map[string]*CloudCluster `json:"clusters"`
 	// Any VM in this list can be expected to have at least one element
 	// in its Errors field.
-	BadInstances vm.List
+	BadInstances vm.List `json:"bad_instances"`
 }
 
 // Collate Cloud.BadInstances by errors.
@@ -50,12 +50,12 @@ func newCloud() *Cloud {
 //
 // TODO(benesch): unify with syncedCluster.
 type CloudCluster struct {
-	Name string
-	User string
+	Name string `json:"name"`
+	User string `json:"user"`
 	// This is the earliest creation and shortest lifetime across VMs.
-	CreatedAt time.Time
-	Lifetime  time.Duration
-	VMs       vm.List
+	CreatedAt time.Time     `json:"created_at"`
+	Lifetime  time.Duration `json:"lifetime"`
+	VMs       vm.List       `json:"vms"`
 }
 
 // Clouds returns the names of all of the various cloud providers used
