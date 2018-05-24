@@ -2,6 +2,7 @@ package install
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -392,6 +393,88 @@ func (c *SyncedCluster) Wait() error {
 	if foundErr {
 		return errors.New("not all nodes booted successfully")
 	}
+	return nil
+}
+
+func (c *SyncedCluster) SetupSSH() error {
+	if c.IsLocal() {
+		return nil
+	}
+
+	// Generate an ssh key that we'll distribute to all of the nodes in the
+	// cluster in order to allow inter-node ssh.
+	var msg string
+	var sshTar []byte
+	c.Parallel("generating ssh key", 1, 0, func(i int) ([]byte, error) {
+		session, err := c.newSession(1)
+		if err != nil {
+			return nil, err
+		}
+		defer session.Close()
+
+		// Create the ssh key and then tar up the public, private and
+		// authorized_keys files and output them to stdout. We'll take this output
+		// and pipe it back into tar on the other nodes in the cluster.
+		cmd := `
+test -f .ssh/id_rsa || \
+  (ssh-keygen -q -f .ssh/id_rsa -t rsa -N '' && \
+   cat .ssh/id_rsa.pub >> .ssh/authorized_keys);
+tar cf - .ssh/id_rsa .ssh/id_rsa.pub .ssh/authorized_keys
+`
+		sshTar, err = session.CombinedOutput(cmd)
+		if err != nil {
+			msg = fmt.Sprintf("~ %s\n%s", cmd, sshTar)
+		}
+		return nil, nil
+	})
+
+	if msg != "" {
+		fmt.Fprintln(os.Stderr, msg)
+		return nil
+	}
+
+	// Skip the the first node which is where we generated the key.
+	nodes := c.Nodes[1:]
+	c.Parallel("distributing ssh key", len(nodes), 0, func(i int) ([]byte, error) {
+		session, err := c.newSession(nodes[i])
+		if err != nil {
+			return nil, err
+		}
+		defer session.Close()
+
+		session.SetStdin(bytes.NewReader(sshTar))
+		cmd := `tar xf -`
+		if out, err := session.CombinedOutput(cmd); err != nil {
+			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+		}
+		return nil, nil
+	})
+
+	// Populate the known_hosts file with both internal and external IPs of all
+	// of the nodes in the cluster.
+	ips := make([]string, len(c.Nodes), len(c.Nodes)*2)
+	c.Parallel("retrieving hosts", len(c.Nodes), 0, func(i int) ([]byte, error) {
+		var err error
+		ips[i], err = c.GetInternalIP(c.Nodes[i])
+		return nil, errors.Wrapf(err, "pgurls")
+	})
+	for _, i := range c.Nodes {
+		ips = append(ips, c.host(i))
+	}
+	c.Parallel("scanning hosts", len(c.Nodes), 0, func(i int) ([]byte, error) {
+		session, err := c.newSession(c.Nodes[i])
+		if err != nil {
+			return nil, err
+		}
+		defer session.Close()
+
+		cmd := `ssh-keyscan -t rsa ` + strings.Join(ips, " ") + ` >> .ssh/known_hosts`
+		if out, err := session.CombinedOutput(cmd); err != nil {
+			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+		}
+		return nil, nil
+	})
+
 	return nil
 }
 
@@ -901,34 +984,11 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 }
 
 func (c *SyncedCluster) scp(src, dest string) error {
-	var args []string
-	if strings.Contains(src, "@") && strings.Contains(dest, "@") {
-		// A remote to remote copy.
-		parts := strings.Split(src, ":")
-		if len(parts) != 2 {
-			return errors.Errorf("unable to parse src: %s", src)
-		}
-		// Note that we don't specify compression (-C) for the remote to remote
-		// copy as bandwidth seems to be cheaper than cpu.
-		args = []string{
-			"ssh",
-			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
-			"-o", "StrictHostKeyChecking=no",
-			"-o", "ForwardAgent=yes",
-			parts[0],
-			"--",
-			"scp", "-r",
-			"-o", "StrictHostKeyChecking=no",
-			parts[1], dest,
-		}
-	} else {
-		// A local to remote copy or a remote to local copy.
-		args = []string{
-			"scp", "-r", "-C",
-			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
-			"-o", "StrictHostKeyChecking=no",
-			src, dest,
-		}
+	args := []string{
+		"scp", "-r", "-C",
+		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+		"-o", "StrictHostKeyChecking=no",
+		src, dest,
 	}
 	cmd := exec.Command(args[0], args[1:]...)
 	out, err := cmd.CombinedOutput()
