@@ -902,7 +902,7 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 
 func (c *SyncedCluster) scp(src, dest string) error {
 	var args []string
-	if strings.Contains(src, "@") {
+	if strings.Contains(src, "@") && strings.Contains(dest, "@") {
 		// A remote to remote copy.
 		parts := strings.Split(src, ":")
 		if len(parts) != 2 {
@@ -922,12 +922,11 @@ func (c *SyncedCluster) scp(src, dest string) error {
 			parts[1], dest,
 		}
 	} else {
-		// A local to remote copy.
+		// A local to remote copy or a remote to local copy.
 		args = []string{
 			"scp", "-r", "-C",
 			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
 			"-o", "StrictHostKeyChecking=no",
-			"-o", "ForwardAgent=yes",
 			src, dest,
 		}
 	}
