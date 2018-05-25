@@ -68,6 +68,7 @@ var (
 	external       = false
 	adminurlOpen   = false
 	useTreeDist    = false
+	encrypt        = false
 )
 
 func sortedClusters() []string {
@@ -1227,6 +1228,8 @@ func main() {
 				&nodeEnv, "env", "e", nodeEnv, "node environment variables")
 			cmd.Flags().StringVarP(
 				&clusterType, "type", "t", clusterType, `cluster type ("cockroach" or "cassandra")`)
+			cmd.Flags().BoolVar(
+				&install.StartOpts.Encrypt, "encrypt", encrypt, "start nodes with encryption at rest turned on")
 			fallthrough
 		case pgurlCmd, adminurlCmd, sqlCmd:
 			cmd.Flags().BoolVar(

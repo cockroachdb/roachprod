@@ -18,6 +18,7 @@ import (
 )
 
 var StartOpts struct {
+	Encrypt    bool
 	Sequential bool
 }
 
@@ -92,13 +93,13 @@ func GetAdminUIPort(connPort int) int {
 	return connPort + 1
 }
 
-func argExists(args []string, target string) bool {
-	for _, arg := range args {
+func argExists(args []string, target string) int {
+	for i, arg := range args {
 		if arg == target || strings.HasPrefix(arg, target+"=") {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
@@ -296,7 +297,7 @@ tar cvf certs.tar certs
 			dir = fmt.Sprintf("${HOME}/local/%d/data", nodes[i])
 			logDir = fmt.Sprintf("${HOME}/local/%d/logs", nodes[i])
 		}
-		if !argExists(extraArgs, "--store") {
+		if idx := argExists(extraArgs, "--store"); idx == -1 {
 			args = append(args, "--store=path="+dir)
 		}
 		args = append(args, "--log-dir="+logDir)
@@ -315,7 +316,7 @@ tar cvf certs.tar certs
 		args = append(args, fmt.Sprintf("--port=%d", port))
 		args = append(args, fmt.Sprintf("--http-port=%d", GetAdminUIPort(port)))
 		if locality := c.locality(nodes[i]); locality != "" {
-			if !argExists(extraArgs, "--locality") {
+			if idx := argExists(extraArgs, "--locality"); idx == -1 {
 				args = append(args, "--locality="+locality)
 			}
 		}
@@ -324,6 +325,24 @@ tar cvf certs.tar certs
 		}
 		if advertisePublicIP {
 			args = append(args, fmt.Sprintf("--advertise-host=%s", c.host(i)))
+		}
+
+		var keyCmd string
+		if StartOpts.Encrypt {
+			// Encryption at rest is turned on for the cluster.
+			// TODO(windchan7): allow key size to be specified through flags.
+			encryptArgs := "--enterprise-encryption=path=%s,key=%s/aes-128.key,old-key=plain"
+			var storeDir string
+			if idx := argExists(extraArgs, "--store"); idx == -1 {
+				storeDir = dir
+			} else {
+				storeDir = strings.TrimPrefix(extraArgs[idx], "--store=")
+			}
+			encryptArgs = fmt.Sprintf(encryptArgs, storeDir, storeDir)
+			args = append(args, encryptArgs)
+
+			// Command to create the store key.
+			keyCmd = fmt.Sprintf("mkdir -p %[1]s; if [ ! -e %[1]s/aes-128.key ]; then openssl rand -out %[1]s/aes-128.key 48; fi; ", storeDir)
 		}
 
 		// Argument template expansion is node specific (e.g. for {store-dir}).
@@ -339,7 +358,7 @@ tar cvf certs.tar certs
 		// NB: this is awkward as when the process fails, the test runner will show an
 		// unhelpful empty error (since everything has been redirected away). This is
 		// unfortunately equally awkward to address.
-		cmd := "mkdir -p " + logDir + "; " +
+		cmd := "mkdir -p " + logDir + "; " + keyCmd +
 			fmt.Sprintf(" export ROACHPROD=%d%s && ", nodes[i], c.Tag) +
 			c.Env + " " + binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr" +
