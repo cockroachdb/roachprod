@@ -18,6 +18,7 @@ import (
 )
 
 var StartOpts struct {
+	Encrypt    bool
 	Sequential bool
 }
 
@@ -92,13 +93,13 @@ func GetAdminUIPort(connPort int) int {
 	return connPort + 1
 }
 
-func argExists(args []string, target string) bool {
-	for _, arg := range args {
+func argExists(args []string, target string) int {
+	for i, arg := range args {
 		if arg == target || strings.HasPrefix(arg, target+"=") {
-			return true
+			return i
 		}
 	}
-	return false
+	return -1
 }
 
 func (r Cockroach) Start(c *SyncedCluster, extraArgs []string) {
@@ -296,7 +297,7 @@ tar cvf certs.tar certs
 			dir = fmt.Sprintf("${HOME}/local/%d/data", nodes[i])
 			logDir = fmt.Sprintf("${HOME}/local/%d/logs", nodes[i])
 		}
-		if !argExists(extraArgs, "--store") {
+		if idx := argExists(extraArgs, "--store"); idx == -1 {
 			args = append(args, "--store=path="+dir)
 		}
 		args = append(args, "--log-dir="+logDir)
@@ -315,7 +316,7 @@ tar cvf certs.tar certs
 		args = append(args, fmt.Sprintf("--port=%d", port))
 		args = append(args, fmt.Sprintf("--http-port=%d", GetAdminUIPort(port)))
 		if locality := c.locality(nodes[i]); locality != "" {
-			if !argExists(extraArgs, "--locality") {
+			if idx := argExists(extraArgs, "--locality"); idx == -1 {
 				args = append(args, "--locality="+locality)
 			}
 		}
@@ -324,6 +325,29 @@ tar cvf certs.tar certs
 		}
 		if advertisePublicIP {
 			args = append(args, fmt.Sprintf("--advertise-host=%s", c.host(i)))
+		}
+
+		var keyCmd string
+		var dirCmd string
+		if StartOpts.Encrypt {
+			// Encryption at rest is turned on for the cluster.
+			// If turned on, `roachprod start` will always start the nodes with new store keys
+			// and the old-key set to be plain. So users need to ensure the start logic is correct.
+			encryptArgs := "--enterprise-encryption=path=%s,key=%s/aes-128.key,old-key=plain"
+			var storeDir string
+			if idx := argExists(extraArgs, "--store"); idx == -1{
+				storeDir = dir
+			} else {
+				storeDir = strings.TrimPrefix(extraArgs[idx], "--store=")
+			}
+			encryptArgs = fmt.Sprintf(encryptArgs, storeDir, storeDir)
+			args = append(args, encryptArgs)
+
+			// Command to create the store key.
+			keyCmd = "openssl rand -out %s/aes-128.key 48; "
+			keyCmd = fmt.Sprintf(keyCmd, storeDir)
+			dirCmd = "mkdir -p %s; "
+			dirCmd = fmt.Sprintf(dirCmd, storeDir)
 		}
 
 		// Argument template expansion is node specific (e.g. for {store-dir}).
@@ -339,7 +363,7 @@ tar cvf certs.tar certs
 		// NB: this is awkward as when the process fails, the test runner will show an
 		// unhelpful empty error (since everything has been redirected away). This is
 		// unfortunately equally awkward to address.
-		cmd := "mkdir -p " + logDir + "; " +
+		cmd := "mkdir -p " + logDir + "; " + dirCmd + keyCmd +
 			fmt.Sprintf(" export ROACHPROD=%d%s && ", nodes[i], c.Tag) +
 			c.Env + " " + binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr" +
