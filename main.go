@@ -347,6 +347,9 @@ Local Clusters
 				if err := c.Wait(); err != nil {
 					return err
 				}
+				if err := c.SetupSSH(); err != nil {
+					return err
+				}
 			}
 		} else {
 			for i := 0; i < numNodes; i++ {
