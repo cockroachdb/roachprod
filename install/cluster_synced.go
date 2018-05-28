@@ -318,9 +318,18 @@ func (c *SyncedCluster) Run(stdout, stderr io.Writer, nodes []int, title, cmd st
 		}
 		cmd := e.expand(c, cmd)
 
-		nodeCmd := fmt.Sprintf("export ROACHPROD=%d%s && ", nodes[i], c.Tag) + cmd
+		// Be careful about changing these command strings. In particular, we need
+		// to support running commands in the background on both local and remote
+		// nodes. For example:
+		//
+		//   roachprod run cluster -- "sleep 60 &> /dev/null < /dev/null &"
+		//
+		// That command should return immediately. And a "roachprod status" should
+		// reveal that the sleep command is running on the cluster.
+		nodeCmd := fmt.Sprintf(`export ROACHPROD=%d%s && bash -c %s`,
+			nodes[i], c.Tag, ssh.Escape1(cmd))
 		if c.IsLocal() {
-			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], cmd)
+			nodeCmd = fmt.Sprintf("cd ${HOME}/local/%d ; %s", nodes[i], nodeCmd)
 		}
 
 		if stream {
