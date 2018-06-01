@@ -26,6 +26,7 @@ import (
 	"github.com/cockroachdb/roachprod/vm/local"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/sys/unix"
 )
 
@@ -69,6 +70,7 @@ var (
 	adminurlOpen   = false
 	useTreeDist    = false
 	encrypt        = false
+	quiet          = false
 )
 
 func sortedClusters() []string {
@@ -147,6 +149,7 @@ Hint: use "roachprod sync" to update the list of available clusters.
 		c.Tag = "/" + tag
 	}
 	c.UseTreeDist = useTreeDist
+	c.Quiet = quiet || !terminal.IsTerminal(int(os.Stdout.Fd()))
 	return c, nil
 }
 
@@ -1133,6 +1136,9 @@ func main() {
 		webCmd,
 		dumpCmd,
 	)
+
+	rootCmd.PersistentFlags().BoolVarP(
+		&quiet, "quiet", "q", false, "disable fancy progress output")
 
 	for _, cmd := range []*cobra.Command{createCmd, destroyCmd, extendCmd} {
 		cmd.Flags().StringVarP(&username, "username", "u", os.Getenv("ROACHPROD_USER"),

@@ -53,6 +53,7 @@ type SyncedCluster struct {
 	Tag         string
 	Impl        ClusterImpl
 	UseTreeDist bool
+	Quiet       bool
 }
 
 func (c *SyncedCluster) host(index int) string {
@@ -700,7 +701,7 @@ func (c *SyncedCluster) Put(src, dest string) {
 
 	var writer ui.Writer
 	var ticker *time.Ticker
-	if ui.IsStdoutTerminal {
+	if !c.Quiet {
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
 		ticker = time.NewTicker(1000 * time.Millisecond)
@@ -714,7 +715,7 @@ func (c *SyncedCluster) Put(src, dest string) {
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
-			if !ui.IsStdoutTerminal {
+			if c.Quiet {
 				fmt.Printf(".")
 			}
 		case r, ok := <-results:
@@ -730,7 +731,7 @@ func (c *SyncedCluster) Put(src, dest string) {
 				linesMu.Unlock()
 			}
 		}
-		if ui.IsStdoutTerminal {
+		if !c.Quiet {
 			linesMu.Lock()
 			for i := range lines {
 				fmt.Fprintf(&writer, "  %2d: ", c.Nodes[i])
@@ -747,7 +748,7 @@ func (c *SyncedCluster) Put(src, dest string) {
 		}
 	}
 
-	if !ui.IsStdoutTerminal {
+	if c.Quiet {
 		fmt.Printf("\n")
 		linesMu.Lock()
 		for i := range lines {
@@ -874,7 +875,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 	}()
 
 	var ticker *time.Ticker
-	if ui.IsStdoutTerminal {
+	if !c.Quiet {
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
 		ticker = time.NewTicker(1000 * time.Millisecond)
@@ -888,7 +889,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
-			if !ui.IsStdoutTerminal {
+			if c.Quiet {
 				fmt.Printf(".")
 			}
 		case r, ok := <-results:
@@ -904,7 +905,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 				linesMu.Unlock()
 			}
 		}
-		if ui.IsStdoutTerminal {
+		if !c.Quiet {
 			linesMu.Lock()
 			for i := range lines {
 				fmt.Fprintf(&writer, "  %2d: ", c.Nodes[i])
@@ -921,7 +922,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 		}
 	}
 
-	if !ui.IsStdoutTerminal {
+	if c.Quiet {
 		fmt.Printf("\n")
 		linesMu.Lock()
 		for i := range lines {
@@ -1081,7 +1082,7 @@ func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func
 	}
 
 	var ticker *time.Ticker
-	if ui.IsStdoutTerminal {
+	if !c.Quiet {
 		ticker = time.NewTicker(100 * time.Millisecond)
 	} else {
 		ticker = time.NewTicker(1000 * time.Millisecond)
@@ -1098,7 +1099,7 @@ func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func
 	for done := false; !done; {
 		select {
 		case <-ticker.C:
-			if !ui.IsStdoutTerminal {
+			if c.Quiet {
 				fmt.Fprintf(out, ".")
 			}
 		case r, ok := <-results:
@@ -1114,7 +1115,7 @@ func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func
 			}
 		}
 
-		if ui.IsStdoutTerminal {
+		if !c.Quiet {
 			fmt.Fprint(&writer, display)
 			var n int
 			for i := range complete {
@@ -1132,7 +1133,7 @@ func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func
 		}
 	}
 
-	if !ui.IsStdoutTerminal {
+	if c.Quiet {
 		fmt.Fprintf(out, "\n")
 	}
 
