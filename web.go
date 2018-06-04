@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
+	"os"
 	"os/exec"
+	"path/filepath"
 )
 
 func web(dirs []string) error {
@@ -45,7 +47,11 @@ func webApply(m interface{}) error {
 	if err != nil {
 		return err
 	}
-	f, err := ioutil.TempFile("", "web")
+	dir, err := ioutil.TempDir("", "roachprod-web")
+	if err != nil {
+		return err
+	}
+	f, err := os.Create(filepath.Join(dir, "index.html")) // .html extension required for open to work
 	if err != nil {
 		return err
 	}
