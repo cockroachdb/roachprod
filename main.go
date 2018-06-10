@@ -870,6 +870,54 @@ nodes.
 	}),
 }
 
+var reformatCmd = &cobra.Command{
+	Use:   "reformat <cluster> <filesystem>",
+	Short: "reformat disks in a cluster\n",
+	Long: `
+Reformat disks in a cluster to use the specified filesystem.
+
+WARNING: Reformatting will delete all existing data in the cluster.
+
+Filesystem options:
+  ext4
+  zfs
+`,
+
+	Args: cobra.ExactArgs(2),
+	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		c, err := newCluster(args[0], false /* reserveLoadGen */)
+		if err != nil {
+			return err
+		}
+
+		var fsCmd string
+		switch fs := args[1]; fs {
+		case "zfs":
+			if err := install.Install(c, []string{"zfs"}); err != nil {
+				return err
+			}
+			fsCmd = `sudo zpool create -f data1 -m /mnt/data1 /dev/sdb`
+		case "ext4":
+			fsCmd = `sudo mkfs.ext4 -F /dev/sdb && sudo mount -o discard,defaults /dev/sdb /mnt/data1`
+		default:
+			return fmt.Errorf("unknown filesystem %q", fs)
+		}
+
+		c.Run(os.Stdout, os.Stderr, c.Nodes, "reformatting", fmt.Sprintf(`
+set -euo pipefail
+if sudo zpool list -Ho name 2>/dev/null | grep ^data1$; then
+  sudo zpool destroy -f data1
+fi
+if mountpoint -q /mnt/data1; then
+  sudo umount -f /mnt/data1
+fi
+%s
+sudo chmod 777 /mnt/data1
+`, fsCmd))
+		return nil
+	}),
+}
+
 var runCmd = &cobra.Command{
 	Use:     "run <cluster> <command> [args]",
 	Aliases: []string{"ssh"},
@@ -1125,6 +1173,7 @@ func main() {
 		stopCmd,
 		runCmd,
 		wipeCmd,
+		reformatCmd,
 		testCmd,
 		installCmd,
 		putCmd,
@@ -1146,7 +1195,7 @@ func main() {
 	}
 
 	for _, cmd := range []*cobra.Command{statusCmd, monitorCmd, startCmd,
-		stopCmd, runCmd, wipeCmd, testCmd, installCmd, putCmd, getCmd,
+		stopCmd, runCmd, wipeCmd, reformatCmd, testCmd, installCmd, putCmd, getCmd,
 		sqlCmd, pgurlCmd, adminurlCmd,
 	} {
 		cmd.Flags().BoolVar(
