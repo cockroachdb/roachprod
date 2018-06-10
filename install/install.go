@@ -58,6 +58,11 @@ sudo apt-get install -y \
   linux-tools-4.10.0-35-generic \
   linux-cloud-tools-4.10.0-35-generic;
 `,
+
+	"zfs": `
+sudo apt-get update;
+sudo apt-get install -y \
+  zfsutils-linux`,
 }
 
 func Install(c *SyncedCluster, args []string) error {
