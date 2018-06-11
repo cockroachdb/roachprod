@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
@@ -41,8 +42,11 @@ func runJSONCommand(args []string, parsed interface{}) error {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			stderr = exitErr.Stderr
 		}
-		return errors.Errorf("failed to run: gcloud %s: %s\nstdout: %s\nstderr: %s",
-			strings.Join(args, " "), err, bytes.TrimSpace(rawJSON), bytes.TrimSpace(stderr))
+		// TODO(peter): Remove this hack once gcloud is behaving again.
+		if matched, _ := regexp.Match(`europe-north.*Unknown zone`, stderr); !matched {
+			return errors.Errorf("failed to run: gcloud %s: %s\nstdout: %s\nstderr: %s",
+				strings.Join(args, " "), err, bytes.TrimSpace(rawJSON), bytes.TrimSpace(stderr))
+		}
 	}
 
 	if err := json.Unmarshal(rawJSON, &parsed); err != nil {
