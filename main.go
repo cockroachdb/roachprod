@@ -71,6 +71,7 @@ var (
 	useTreeDist    = false
 	encrypt        = false
 	quiet          = false
+	sig            = 9
 )
 
 func sortedClusters() []string {
@@ -773,15 +774,19 @@ cluster setting will be set to its value.
 }
 
 var stopCmd = &cobra.Command{
-	Use:   "stop <cluster>",
+	Use:   "stop <cluster> [--sig]",
 	Short: "stop nodes on a cluster",
 	Long: `Stop nodes on a cluster.
 
 Stop roachprod created processes running on the nodes in a cluster, including
 processes started by the "start", "run" and "ssh" commands. Every process
 started by roachprod is tagged with a ROACHPROD=<node> environment variable
-which is used by "stop" to locate the processes and terminate them. Processes
-are killed with signal 9 (SIGKILL) giving them no chance for a graceful exit.
+which is used by "stop" to locate the processes and terminate them. By default
+processes are killed with signal 9 (SIGKILL) giving them no chance for a graceful
+exit.
+
+The --sig flag will pass a signal to kill to allow us finer control over how we
+shutdown cockroach.
 ` + tagHelp + `
 `,
 	Args: cobra.ExactArgs(1),
@@ -790,7 +795,7 @@ are killed with signal 9 (SIGKILL) giving them no chance for a graceful exit.
 		if err != nil {
 			return err
 		}
-		c.Stop()
+		c.Stop(sig)
 		return nil
 	}),
 }
@@ -1257,6 +1262,8 @@ func main() {
 
 	startCmd.Flags().IntVarP(&numRacks,
 		"racks", "r", 0, "the number of racks to partition the nodes into")
+
+	stopCmd.Flags().IntVar(&sig, "sig", 9, "signal to pass to kill.")
 
 	testCmd.Flags().DurationVarP(
 		&duration, "duration", "d", 5*time.Minute, "the duration to run each test")
