@@ -391,7 +391,7 @@ func kvTest(clusterName, testName, dir, cmd string) {
 			break
 		}
 	}
-	c.Stop()
+	c.Stop(false)
 }
 
 func kv0(clusterName, dir string) {
@@ -487,7 +487,7 @@ func nightly(clusterName, dir string) {
 			break
 		}
 	}
-	c.Stop()
+	c.Stop(false)
 }
 
 func splits(clusterName, dir string) {
@@ -546,7 +546,7 @@ func splits(clusterName, dir string) {
 			if err := c.RunLoad(cmd, stdout, stderr); err != nil {
 				return err
 			}
-			c.Stop()
+			c.Stop(false)
 			return nil
 		}()
 		if err != nil {
@@ -556,5 +556,5 @@ func splits(clusterName, dir string) {
 			break
 		}
 	}
-	c.Stop()
+	c.Stop(false)
 }

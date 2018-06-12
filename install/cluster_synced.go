@@ -123,7 +123,11 @@ func (c *SyncedCluster) newSession(i int) (session, error) {
 	return &remoteSession{s}, nil
 }
 
-func (c *SyncedCluster) Stop() {
+func (c *SyncedCluster) Stop(shutdown bool) {
+	killArgs := ""
+	if !shutdown {
+		killArgs = "-9"
+	}
 	display := fmt.Sprintf("%s: stopping", c.Name)
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
 		session, err := c.newSession(c.Nodes[i])
@@ -136,15 +140,15 @@ func (c *SyncedCluster) Stop() {
 		// awk process match its own output from `ps`.
 		cmd := fmt.Sprintf(`ps axeww -o pid -o command | \
   sed 's/export ROACHPROD=//g' | \
-  awk '/ROACHPROD=(%d%s)[ \/]/ { print $1 }' | xargs kill -9 || true;`,
-			c.Nodes[i], c.escapedTag())
+  awk '/ROACHPROD=(%d%s)[ \/]/ { print $1 }' | xargs kill %s || true;`,
+			c.Nodes[i], c.escapedTag(), killArgs)
 		return session.CombinedOutput(cmd)
 	})
 }
 
 func (c *SyncedCluster) Wipe() {
 	display := fmt.Sprintf("%s: wiping", c.Name)
-	c.Stop()
+	c.Stop(false)
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
 		session, err := c.newSession(c.Nodes[i])
 		if err != nil {
