@@ -28,6 +28,7 @@ import (
 type ClusterImpl interface {
 	Start(c *SyncedCluster, extraArgs []string)
 	NodeDir(c *SyncedCluster, index int) string
+	LogDir(c *SyncedCluster, index int) string
 	NodeURL(c *SyncedCluster, host string, port int) string
 	NodePort(c *SyncedCluster, index int) int
 }

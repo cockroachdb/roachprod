@@ -80,6 +80,10 @@ func (Cassandra) NodeDir(c *SyncedCluster, index int) string {
 	return "/mnt/data1/cassandra"
 }
 
+func (Cassandra) LogDir(c *SyncedCluster, index int) string {
+	panic("Cassandra.LogDir unimplemented")
+}
+
 func (Cassandra) NodeURL(_ *SyncedCluster, host string, port int) string {
 	return fmt.Sprintf("'cassandra://%s:%d'", host, port)
 }

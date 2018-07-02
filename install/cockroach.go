@@ -291,12 +291,8 @@ tar cvf certs.tar certs
 		} else {
 			args = append(args, "--insecure")
 		}
-		dir := "/mnt/data1/cockroach"
-		logDir := "${HOME}/logs"
-		if c.IsLocal() {
-			dir = fmt.Sprintf("${HOME}/local/%d/data", nodes[i])
-			logDir = fmt.Sprintf("${HOME}/local/%d/logs", nodes[i])
-		}
+		dir := c.Impl.NodeDir(c, i)
+		logDir := c.Impl.LogDir(c, i)
 		if idx := argExists(extraArgs, "--store"); idx == -1 {
 			args = append(args, "--store=path="+dir)
 		}
@@ -414,6 +410,14 @@ func (Cockroach) NodeDir(c *SyncedCluster, index int) string {
 		return os.ExpandEnv(fmt.Sprintf("${HOME}/local/%d/data", index))
 	}
 	return "/mnt/data1/cockroach"
+}
+
+func (Cockroach) LogDir(c *SyncedCluster, index int) string {
+	dir := "${HOME}/logs"
+	if c.IsLocal() {
+		dir = os.ExpandEnv(fmt.Sprintf("${HOME}/local/%d/logs", index))
+	}
+	return dir
 }
 
 func (Cockroach) NodeURL(c *SyncedCluster, host string, port int) string {
