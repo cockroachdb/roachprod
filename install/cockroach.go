@@ -291,8 +291,8 @@ tar cvf certs.tar certs
 		} else {
 			args = append(args, "--insecure")
 		}
-		dir := c.Impl.NodeDir(c, i)
-		logDir := c.Impl.LogDir(c, i)
+		dir := c.Impl.NodeDir(c, nodes[i])
+		logDir := c.Impl.LogDir(c, nodes[i])
 		if idx := argExists(extraArgs, "--store"); idx == -1 {
 			args = append(args, "--store=path="+dir)
 		}
