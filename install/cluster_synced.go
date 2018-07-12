@@ -412,6 +412,11 @@ func (c *SyncedCluster) SetupSSH() error {
 		return nil
 	}
 
+	if len(c.Nodes) == 0 || len(c.Users) == 0 || len(c.VMs) == 0 {
+		return fmt.Errorf("%s: invalid cluster: nodes=%d users=%d hosts=%d",
+			c.Name, len(c.Nodes), len(c.Users), len(c.VMs))
+	}
+
 	// Generate an ssh key that we'll distribute to all of the nodes in the
 	// cluster in order to allow inter-node ssh.
 	var msg string
