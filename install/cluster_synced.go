@@ -378,13 +378,8 @@ func (c *SyncedCluster) Wait() error {
 			}
 			defer session.Close()
 
-			// Wait for the startup scripts to complete.
-			out, err := session.CombinedOutput("systemctl show google-startup-scripts -p ActiveState")
+			_, err = session.CombinedOutput("test -e /mnt/data1/.roachprod-initialized")
 			if err != nil {
-				errs[i] = err
-				return nil, nil
-			}
-			if strings.TrimSpace(string(out)) == "ActiveState=activating" {
 				time.Sleep(500 * time.Millisecond)
 				continue
 			}
