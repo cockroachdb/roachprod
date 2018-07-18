@@ -31,6 +31,7 @@ fi
 sudo chmod 777 /mnt/data1
 # sshguard can prevent frequent ssh connections to the same host. Disable it.
 sudo service sshguard stop
+sudo touch /mnt/data1/.roachprod-initialized
 `
 
 // write the startup script to a temp file.

@@ -36,6 +36,7 @@ if [ "${disknum}" -eq "0" ]; then
   mkdir -p /mnt/data1
   chmod 777 /mnt/data1
 fi
+sudo touch /mnt/data1/.roachprod-initialized
 `
 
 // runCommand is used to invoke an AWS command for which no output is expected.
