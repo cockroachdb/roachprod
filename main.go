@@ -68,7 +68,7 @@ var (
 	tag            string
 	external       = false
 	adminurlOpen   = false
-	useTreeDist    = false
+	useTreeDist    = true
 	encrypt        = false
 	quiet          = false
 	sig            = 9
