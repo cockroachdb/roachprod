@@ -28,24 +28,39 @@ func initHostDir() error {
 func syncHosts(cloud *cloud.Cloud) error {
 	hd := os.ExpandEnv(config.DefaultHostDir)
 
-	// Write all host files.
+	// Write all host files. We're the only process doing this due to the file
+	// lock acquired by syncAll, but other processes may be reading the host
+	// files concurrently so we need to write the files atomically by writing to
+	// a temporary file and renaming.
 	for _, c := range cloud.Clusters {
 		filename := path.Join(hd, c.Name)
-		file, err := os.Create(filename)
-		if err != nil {
-			return errors.Wrapf(err, "problem creating file %s", filename)
-		}
-		defer file.Close()
+		tmpFile := filename + ".tmp"
 
-		// Align columns left and separate with at least two spaces.
-		tw := tabwriter.NewWriter(file, 0, 8, 2, ' ', 0)
-		tw.Write([]byte("# user@host\tlocality\tvpcId\n"))
-		for _, vm := range c.VMs {
-			tw.Write([]byte(fmt.Sprintf(
-				"%s@%s\t%s\t%s\n", vm.RemoteUser, vm.PublicIP, vm.Locality(), vm.VPC)))
+		err := func() error {
+			file, err := os.Create(tmpFile)
+			if err != nil {
+				return errors.Wrapf(err, "problem creating file %s", filename)
+			}
+			defer file.Close()
+
+			// Align columns left and separate with at least two spaces.
+			tw := tabwriter.NewWriter(file, 0, 8, 2, ' ', 0)
+			tw.Write([]byte("# user@host\tlocality\tvpcId\n"))
+			for _, vm := range c.VMs {
+				tw.Write([]byte(fmt.Sprintf(
+					"%s@%s\t%s\t%s\n", vm.RemoteUser, vm.PublicIP, vm.Locality(), vm.VPC)))
+			}
+			if err := tw.Flush(); err != nil {
+				return errors.Wrapf(err, "problem writing file %s", filename)
+			}
+			return nil
+		}()
+		if err != nil {
+			return err
 		}
-		if err := tw.Flush(); err != nil {
-			return errors.Wrapf(err, "problem writing file %s", filename)
+
+		if err := os.Rename(tmpFile, filename); err != nil {
+			return err
 		}
 	}
 
@@ -88,6 +103,9 @@ func loadClusters() error {
 
 	for _, file := range files {
 		if !file.Mode().IsRegular() {
+			continue
+		}
+		if strings.HasSuffix(file.Name(), ".tmp") {
 			continue
 		}
 
