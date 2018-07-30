@@ -491,8 +491,21 @@ tar cf - .ssh/id_rsa .ssh/id_rsa.pub .ssh/authorized_keys
 		// Note that this is not idempotent. If we run the ssh-keyscan multiple
 		// times on the same node the known_hosts file will grow. This isn't a
 		// problem for the usage here which only performs the keyscan once when the
-		// cluster is created.
-		cmd := `ssh-keyscan -t rsa ` + strings.Join(ips, " ") + ` >> .ssh/known_hosts`
+		// cluster is created. ssh-keyscan may return fewer than the desired number
+		// of entries if the remote nodes are not responding yet, so we loop until
+		// we have a scan that found host keys for all of the IPs.
+		cmd := `
+for i in {1..20}; do
+  ssh-keyscan -T 60 -t rsa ` + strings.Join(ips, " ") + ` > .ssh/known_hosts.tmp
+  if [ "$(cat .ssh/known_hosts.tmp | wc -l)" -eq "` + fmt.Sprint(len(ips)) + `" ]; then
+    cat .ssh/known_hosts.tmp >> .ssh/known_hosts
+    rm -f .ssh/known_hosts.tmp
+    exit 0
+  fi
+  sleep 1
+done
+exit 1
+`
 		if out, err := session.CombinedOutput(cmd); err != nil {
 			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
 		}
