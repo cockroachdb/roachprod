@@ -387,6 +387,7 @@ tar cvf certs.tar certs
 			if c.IsLocal() {
 				cmd = `cd ${HOME}/local/1 ; `
 			}
+			cmd += `COCKROACH_CONNECT_TIMEOUT=0 `
 			cmd += cockroachNodeBinary(c, 1) + " sql --url " +
 				r.NodeURL(c, "localhost", r.NodePort(c, 1)) + " -e " +
 				fmt.Sprintf(`"
