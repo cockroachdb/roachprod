@@ -88,7 +88,6 @@ func web1(d *testData) error {
 			{1, "#ff0000", []int{4, 4}},
 		},
 	}
-
 	return webApply(m)
 }
 

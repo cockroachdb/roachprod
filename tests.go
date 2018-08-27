@@ -67,7 +67,7 @@ func loadTestRun(dir, name string) (*testRun, error) {
 		return nil, err
 	}
 
-	const header = `_elapsed___errors_____ops(total)___ops/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)`
+	const header = `_elapsed___errors_____ops(total)___ops/sec(cum)__avg(ms)__p50(ms)__p95(ms)__p99(ms)_pMax(ms)__result`
 	i := bytes.Index(b, []byte(header))
 	if i == -1 {
 		return nil, nil
@@ -395,11 +395,11 @@ func kvTest(clusterName, testName, dir, cmd string) {
 }
 
 func kv0(clusterName, dir string) {
-	kvTest(clusterName, "kv_0", dir, "./kv --read-percent=0 --splits=1000")
+	kvTest(clusterName, "kv_0", dir, "./workload run kv --init --read-percent=0 --splits=1000")
 }
 
 func kv95(clusterName, dir string) {
-	kvTest(clusterName, "kv_95", dir, "./kv --read-percent=95 --splits=1000")
+	kvTest(clusterName, "kv_95", dir, "./workload run kv --init --read-percent=95 --splits=1000")
 }
 
 func ycsbA(clusterName, dir string) {
