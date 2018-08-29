@@ -1009,6 +1009,47 @@ var installCmd = &cobra.Command{
 	}),
 }
 
+var stageCmd = &cobra.Command{
+	Use:   "stage <cluster> <application> [<sha/version>]",
+	Short: "stage cockroach binaries",
+	Long: `Stages release and edge binaries to the cluster. Currently
+available application options are:
+
+	cockroach - Cockroach Unofficial. Can provide an optional SHA, otherwise
+		latest build version is used.
+	workload - Cockroach workload application.
+	release - Official CockroachDB Release. Must provide a specific release
+		version.
+`,
+	Args: cobra.RangeArgs(2, 3),
+	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		c, err := newCluster(args[0], false /* reserveLoadGen */)
+		if err != nil {
+			return err
+		}
+
+		applicationName := args[1]
+		versionArg := ""
+		if len(args) == 3 {
+			versionArg = args[2]
+		}
+		switch applicationName {
+		case "cockroach":
+			return install.StageRemoteBinary(
+				c, applicationName, "cockroach/cockroach.linux-gnu-amd64", versionArg,
+			)
+		case "workload":
+			return install.StageRemoteBinary(
+				c, applicationName, "cockroach/workload", versionArg,
+			)
+		case "release":
+			return install.StageCockroachRelease(c, versionArg)
+		default:
+			return fmt.Errorf("unknown application %s", applicationName)
+		}
+	}),
+}
+
 var putCmd = &cobra.Command{
 	Use:   "put <cluster> <src> [<dest>]",
 	Short: "copy a local file to the nodes in a cluster",
@@ -1194,6 +1235,7 @@ func main() {
 		installCmd,
 		putCmd,
 		getCmd,
+		stageCmd,
 		sqlCmd,
 		pgurlCmd,
 		adminurlCmd,
