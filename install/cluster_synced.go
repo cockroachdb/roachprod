@@ -772,7 +772,7 @@ func (c *SyncedCluster) Put(src, dest string) {
 	}
 
 	if haveErr {
-		log.Fatal("failed")
+		log.Fatalf("put %s failed", src)
 	}
 }
 
@@ -946,7 +946,7 @@ func (c *SyncedCluster) Get(src, dest string) {
 	}
 
 	if haveErr {
-		log.Fatal("failed")
+		log.Fatalf("get %s failed", src)
 	}
 }
 
