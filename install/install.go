@@ -3,6 +3,7 @@ package install
 import (
 	"bytes"
 	"fmt"
+	"sort"
 
 	"github.com/hashicorp/go-version"
 )
@@ -20,6 +21,23 @@ sudo apt-get install -y cassandra;
 sudo service cassandra stop;
 `,
 
+	"docker": `
+sudo apt-get update;
+sudo apt-get install  -y \
+    apt-transport-https \
+    ca-certificates \
+    curl \
+    software-properties-common;
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -;
+sudo add-apt-repository \
+   "deb [arch=amd64] https://download.docker.com/linux/ubuntu \
+   $(lsb_release -cs) \
+   stable";
+
+sudo apt-get update;
+sudo apt-get install  -y docker-ce;
+`,
+
 	"gcc": `
 sudo apt-get update;
 sudo apt-get install -y gcc;
@@ -27,12 +45,12 @@ sudo apt-get install -y gcc;
 
 	// graphviz and rlwrap are useful for pprof
 	"go": `
-sudo apt-get update
-sudo apt-get install -y graphviz rlwrap
+sudo apt-get update;
+sudo apt-get install -y graphviz rlwrap;
 
-curl https://dl.google.com/go/go1.9.3.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
-echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh > /dev/null
-sudo chmod +x /etc/profile.d/go.sh
+curl https://dl.google.com/go/go1.9.3.linux-amd64.tar.gz | sudo tar -C /usr/local -xz;
+echo 'export PATH=$PATH:/usr/local/go/bin' | sudo tee /etc/profile.d/go.sh > /dev/null;
+sudo chmod +x /etc/profile.d/go.sh;
 `,
 
 	"haproxy": `
@@ -62,7 +80,17 @@ sudo apt-get install -y \
 	"zfs": `
 sudo apt-get update;
 sudo apt-get install -y \
-  zfsutils-linux`,
+  zfsutils-linux;
+`,
+}
+
+func SortedCmds() []string {
+	cmds := make([]string, 0, len(installCmds))
+	for cmd := range installCmds {
+		cmds = append(cmds, cmd)
+	}
+	sort.Strings(cmds)
+	return cmds
 }
 
 func Install(c *SyncedCluster, args []string) error {
