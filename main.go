@@ -1329,9 +1329,6 @@ func main() {
 	} {
 		switch cmd {
 		case startCmd, testCmd:
-			cmd.Flags().StringVarP(
-				&config.Binary, "binary", "b", config.Binary,
-				"the remote cockroach binary used to start a server")
 			cmd.Flags().BoolVar(
 				&install.StartOpts.Sequential, "sequential", false,
 				"start nodes sequentially so node IDs match hostnames")
@@ -1344,7 +1341,12 @@ func main() {
 			cmd.Flags().BoolVar(
 				&install.StartOpts.Encrypt, "encrypt", encrypt, "start nodes with encryption at rest turned on")
 			fallthrough
-		case pgurlCmd, adminurlCmd, sqlCmd:
+		case sqlCmd:
+			cmd.Flags().StringVarP(
+				&config.Binary, "binary", "b", config.Binary,
+				"the remote cockroach binary used to start a server")
+			fallthrough
+		case pgurlCmd, adminurlCmd:
 			cmd.Flags().BoolVar(
 				&secure, "secure", false, "use a secure cluster")
 		}
