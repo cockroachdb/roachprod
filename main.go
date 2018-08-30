@@ -1007,14 +1007,24 @@ var installCmd = &cobra.Command{
 var stageCmd = &cobra.Command{
 	Use:   "stage <cluster> <application> [<sha/version>]",
 	Short: "stage cockroach binaries",
-	Long: `Stages release and edge binaries to the cluster. Currently
-available application options are:
+	Long: `Stages release and edge binaries to the cluster.
 
-	cockroach - Cockroach Unofficial. Can provide an optional SHA, otherwise
-		latest build version is used.
-	workload - Cockroach workload application.
-	release - Official CockroachDB Release. Must provide a specific release
-		version.
+Currently available application options are:
+  cockroach - Cockroach Unofficial. Can provide an optional SHA, otherwise
+              latest build version is used.
+  workload  - Cockroach workload application.
+  release   - Official CockroachDB Release. Must provide a specific release
+              version.
+
+Some examples of usage:
+  -- stage edge build of cockroach build at a specific SHA:
+  roachprod stage my-cluster cockroach e90e6903fee7dd0f88e20e345c2ddfe1af1e5a97
+
+  -- Stage the most recent edge build of the workload tool:
+  roachprod stage my-cluster workload
+
+  -- Stage the official release binary of CockroachDB at version 2.0.5
+  roachprod stage my-cluster release v2.0.5
 `,
 	Args: cobra.RangeArgs(2, 3),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
