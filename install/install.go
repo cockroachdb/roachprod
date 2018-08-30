@@ -3,6 +3,7 @@ package install
 import (
 	"bytes"
 	"fmt"
+	"sort"
 
 	"github.com/hashicorp/go-version"
 )
@@ -63,6 +64,15 @@ sudo apt-get install -y \
 sudo apt-get update;
 sudo apt-get install -y \
   zfsutils-linux`,
+}
+
+func SortedCmds() []string {
+	cmds := make([]string, 0, len(installCmds))
+	for cmd := range installCmds {
+		cmds = append(cmds, cmd)
+	}
+	sort.Strings(cmds)
+	return cmds
 }
 
 func Install(c *SyncedCluster, args []string) error {

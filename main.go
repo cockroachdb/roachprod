@@ -967,7 +967,7 @@ var testCmd = &cobra.Command{
 	Short: "run one or more tests on a cluster",
 	Long: `Run one or more tests on a cluster. The test <name> must be one of:
 
-	` + strings.Join(allTests(), "\n\t") + `
+    ` + strings.Join(allTests(), "\n    ") + `
 
 Alternately, an interrupted test can be resumed by specifying the output
 directory of a previous test. For example:
@@ -992,12 +992,7 @@ var installCmd = &cobra.Command{
 	Short: "install 3rd party software",
 	Long: `Install third party software. Currently available installation options are:
 
-  cassandra
-  gcc
-  mongodb
-  ntp
-  postgres
-  tools (fio, iftop, perf)
+    ` + strings.Join(install.SortedCmds(), "\n    ") + `
 `,
 	Args: cobra.MinimumNArgs(2),
 	Run: wrap(func(cmd *cobra.Command, args []string) error {
