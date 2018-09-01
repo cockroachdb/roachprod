@@ -387,13 +387,18 @@ tar cvf certs.tar certs
 			if c.IsLocal() {
 				cmd = `cd ${HOME}/local/1 ; `
 			}
-			cmd += `COCKROACH_CONNECT_TIMEOUT=0 `
-			cmd += cockroachNodeBinary(c, 1) + " sql --url " +
+			dir := c.Impl.NodeDir(c, nodes[i])
+			cmd += `
+if ! test -e ` + dir + `/settings-initialized ; then
+  COCKROACH_CONNECT_TIMEOUT=0 ` + cockroachNodeBinary(c, 1) + " sql --url " +
 				r.NodeURL(c, "localhost", r.NodePort(c, 1)) + " -e " +
 				fmt.Sprintf(`"
 SET CLUSTER SETTING server.remote_debugging.mode = 'any';
 SET CLUSTER SETTING cluster.organization = 'Cockroach Labs - Production Testing';
-SET CLUSTER SETTING enterprise.license = '%s';"`, license)
+SET CLUSTER SETTING enterprise.license = '%s';"`, license) + `;
+			touch ` + dir + `/settings-initialized
+fi
+`
 			out, err := session.CombinedOutput(cmd)
 			if err != nil {
 				return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
@@ -402,7 +407,9 @@ SET CLUSTER SETTING enterprise.license = '%s';"`, license)
 			return nil, nil
 		})
 
-		fmt.Println(msg)
+		if msg != "" {
+			fmt.Println(msg)
+		}
 	}
 }
 
