@@ -825,6 +825,21 @@ The "status" command outputs the binary and PID for the specified nodes:
 	}),
 }
 
+var restorePrebuiltDataDirCmd = &cobra.Command{
+	Use:   "restore-prebuilt-data-dir",
+	Short: "",
+	Long:  ` ` + tagHelp + ` `,
+	Args:  cobra.ExactArgs(2),
+	Run: wrap(func(cmd *cobra.Command, args []string) error {
+		c, err := newCluster(args[0], false /* reserveLoadGen */)
+		if err != nil {
+			return err
+		}
+		c.RestorePrebuiltDataDir(args[1])
+		return nil
+	}),
+}
+
 var monitorCmd = &cobra.Command{
 	Use:   "monitor",
 	Short: "monitor the status of nodes in a cluster",
@@ -1234,6 +1249,8 @@ func main() {
 		sqlCmd,
 		pgurlCmd,
 		adminurlCmd,
+
+		restorePrebuiltDataDirCmd,
 
 		webCmd,
 		dumpCmd,

@@ -1163,3 +1163,32 @@ func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func
 func (c *SyncedCluster) escapedTag() string {
 	return strings.Replace(c.Tag, "/", "\\/", -1)
 }
+
+// gs://cockroach-fixtures/workload/tpcc-prebuilt/
+func (c *SyncedCluster) RestorePrebuiltDataDir(path string) {
+	display := fmt.Sprintf("%s: restore prebuilt data dir", c.Name)
+	results := make([]string, len(c.Nodes))
+	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
+		session, err := c.newSession(c.Nodes[i])
+		if err != nil {
+			results[i] = err.Error()
+			return nil, nil
+		}
+		defer session.Close()
+
+		cmd := fmt.Sprintf("cd /mnt/data1 ; mkdir cockroach; gsutil -m cp -r %s/node%d/* cockroach",
+			strings.TrimRight(path, "/"), i+1)
+		out, err := session.CombinedOutput(cmd)
+		var msg string
+		if err != nil {
+			return nil, errors.Wrapf(err, "~ %s\n%s", cmd, out)
+		}
+
+		results[i] = msg
+		return nil, nil
+	})
+
+	for i, r := range results {
+		fmt.Printf("  %2d: %s\n", c.Nodes[i], r)
+	}
+}
