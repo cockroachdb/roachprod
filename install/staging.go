@@ -43,7 +43,7 @@ func StageRemoteBinary(c *SyncedCluster, applicationName, binaryPath, SHA string
 	if err != nil {
 		return err
 	}
-	fmt.Println("Resolved binary url for %s: %s", applicationName, binURL)
+	fmt.Printf("Resolved binary url for %s: %s\n", applicationName, binURL)
 	cmdStr := fmt.Sprintf(
 		`curl -sfSL -o %s "%s" && chmod 755 ./%s`, applicationName, binURL, applicationName,
 	)
