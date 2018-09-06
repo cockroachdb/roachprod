@@ -4,8 +4,9 @@ import (
 	"context"
 	"io"
 	"os/exec"
+	"path/filepath"
 
-	gossh "golang.org/x/crypto/ssh"
+	"github.com/cockroachdb/roachprod/config"
 )
 
 type session interface {
@@ -22,7 +23,29 @@ type session interface {
 }
 
 type remoteSession struct {
-	*gossh.Session
+	*exec.Cmd
+	cancel func()
+}
+
+func newRemoteSession(user, host string) (*remoteSession, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx,
+		"ssh",
+		user+"@"+host,
+		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+		"-o", "StrictHostKeyChecking=no",
+	)
+	return &remoteSession{cmd, cancel}, nil
+}
+
+func (s *remoteSession) CombinedOutput(cmd string) ([]byte, error) {
+	s.Cmd.Args = append(s.Cmd.Args, cmd)
+	return s.Cmd.CombinedOutput()
+}
+
+func (s *remoteSession) Run(cmd string) error {
+	s.Cmd.Args = append(s.Cmd.Args, cmd)
+	return s.Cmd.Run()
 }
 
 func (s *remoteSession) SetStdin(r io.Reader) {
@@ -37,8 +60,28 @@ func (s *remoteSession) SetStderr(w io.Writer) {
 	s.Stderr = w
 }
 
+func (s *remoteSession) StdoutPipe() (io.Reader, error) {
+	// NB: exec.Cmd.StdoutPipe returns a io.ReadCloser, hence the need for the
+	// temporary storage into local variables.
+	r, err := s.Cmd.StdoutPipe()
+	return r, err
+}
+
+func (s *remoteSession) StderrPipe() (io.Reader, error) {
+	// NB: exec.Cmd.StderrPipe returns a io.ReadCloser, hence the need for the
+	// temporary storage into local variables.
+	r, err := s.Cmd.StderrPipe()
+	return r, err
+}
+
 func (s *remoteSession) RequestPty() error {
-	return s.Session.RequestPty("vt100", 40, 80, nil)
+	s.Cmd.Args = append(s.Cmd.Args, "-t")
+	return nil
+}
+
+func (s *remoteSession) Close() error {
+	s.cancel()
+	return nil
 }
 
 type localSession struct {
