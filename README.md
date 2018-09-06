@@ -39,21 +39,21 @@ $ go get -u github.com/cockroachdb/roachprod
 # Create a cluster with 4 nodes and local SSD. The last node is used as a
 # load generator for some tests. Note that the cluster name must always begin
 # with your username.
-export FULLNAME="${USER}-test"
-roachprod create ${FULLNAME} -n 4 --local-ssd
+export CLUSTER="${USER}-test"
+roachprod create ${CLUSTER} -n 4 --local-ssd
 
 # Add gcloud SSH key.
 ssh-add ~/.ssh/google_compute_engine
 
-# Stage scripts and binaries using crl-prod...
-crl-stage-binaries ${FULLNAME} all scripts
-crl-stage-binaries ${FULLNAME} all cockroach
+# Stage binaries.
+roachprod stage ${CLUSTER} workload
+roachprod stage ${CLUSTER} release v2.0.5
 
 # ...or using roachprod directly (e.g., for your locally-built binary).
-roachprod put ${FULLNAME} cockroach
+roachprod put ${CLUSTER} cockroach
 
 # Start a cluster.
-roachprod start ${FULLNAME}
+roachprod start ${CLUSTER}
 
 # Check the admin UI.
 # http://35.196.94.196:26258
@@ -62,10 +62,10 @@ roachprod start ${FULLNAME}
 cockroach sql --insecure --host=35.196.94.196
 
 # Extend lifetime by another 6 hours.
-roachprod extend ${FULLNAME} --lifetime=6h
+roachprod extend ${CLUSTER} --lifetime=6h
 
 # Destroy the cluster.
-roachprod destroy ${FULLNAME}
+roachprod destroy ${CLUSTER}
 ```
 
 ## Command reference
