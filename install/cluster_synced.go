@@ -94,7 +94,7 @@ func (c *SyncedCluster) GetInternalIP(index int) (string, error) {
 		return c.host(index), nil
 	}
 
-	session, err := ssh.NewSSHSession(c.user(index), c.host(index))
+	session, err := c.newSession(index)
 	if err != nil {
 		return "", nil
 	}
@@ -116,12 +116,7 @@ func (c *SyncedCluster) newSession(i int) (session, error) {
 	if c.IsLocal() {
 		return newLocalSession(), nil
 	}
-
-	s, err := ssh.NewSSHSession(c.user(i), c.host(i))
-	if err != nil {
-		return nil, err
-	}
-	return &remoteSession{s}, nil
+	return newRemoteSession(c.user(i), c.host(i))
 }
 
 func (c *SyncedCluster) Stop(sig int) {
