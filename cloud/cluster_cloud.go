@@ -21,6 +21,16 @@ type Cloud struct {
 	BadInstances vm.List `json:"bad_instances"`
 }
 
+// Clone creates a deep copy of the receiver.
+func (c *Cloud) Clone() *Cloud {
+	cc := *c
+	cc.Clusters = make(map[string]*CloudCluster, len(c.Clusters))
+	for k, v := range c.Clusters {
+		cc.Clusters[k] = v
+	}
+	return &cc
+}
+
 // Collate Cloud.BadInstances by errors.
 func (c *Cloud) BadInstanceErrors() map[error]vm.List {
 	ret := map[error]vm.List{}

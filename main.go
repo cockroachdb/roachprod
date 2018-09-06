@@ -531,13 +531,14 @@ hosts file.
 			return err
 		}
 
-		// Filter and sort by cluster names for stable output
+		// Filter and sort by cluster names for stable output.
 		var names []string
+		filteredCloud := cloud.Clone()
 		for name := range cloud.Clusters {
 			if listPattern.MatchString(name) {
 				names = append(names, name)
 			} else {
-				delete(cloud.Clusters, name)
+				delete(filteredCloud.Clusters, name)
 			}
 		}
 		sort.Strings(names)
@@ -549,14 +550,14 @@ hosts file.
 
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
-			if err := enc.Encode(cloud); err != nil {
+			if err := enc.Encode(filteredCloud); err != nil {
 				return err
 			}
 		} else {
 			// Align columns left and separate with at least two spaces.
 			tw := tabwriter.NewWriter(os.Stdout, 0, 8, 2, ' ', 0)
 			for _, name := range names {
-				c := cloud.Clusters[name]
+				c := filteredCloud.Clusters[name]
 				if listDetails {
 					c.PrintDetails()
 				} else {
@@ -575,7 +576,7 @@ hosts file.
 
 			// Optionally print any dangling instances with errors
 			if listDetails {
-				collated := cloud.BadInstanceErrors()
+				collated := filteredCloud.BadInstanceErrors()
 
 				// Sort by Error() value for stable output
 				var errors ui.ErrorsByError
