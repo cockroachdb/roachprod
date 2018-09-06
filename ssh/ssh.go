@@ -105,8 +105,21 @@ func newSSHClient(user, host string) (*ssh.Client, net.Conn, error) {
 	config.SetDefaults()
 
 	addr := fmt.Sprintf("%s:22", host)
-	conn, err := net.DialTimeout("tcp", addr, 30*time.Second)
-	if err != nil {
+	var conn net.Conn
+	for i, attempts := 1, 10; i <= attempts; i++ {
+		var err error
+		conn, err = net.DialTimeout("tcp", addr, 5*time.Second)
+		if err == nil {
+			break
+		}
+		if i == attempts {
+			return nil, nil, errors.Wrapf(err, "%d attempts", i)
+		}
+		if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+			// NB: retry on dial timeouts. These seem to happen spuriously (though
+			// infrequently) on GCE.
+			continue
+		}
 		return nil, nil, err
 	}
 	c, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
