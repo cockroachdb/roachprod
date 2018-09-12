@@ -309,6 +309,14 @@ tar cvf certs.tar certs
 			args = append(args, fmt.Sprintf("--cache=%d%%", cache))
 			args = append(args, fmt.Sprintf("--max-sql-memory=%d%%", cache))
 		}
+		if c.IsLocal() {
+			// This avoids annoying firewall prompts on Mac OS X.
+			if VersionSatifies(vers, ">=2.1") {
+				args = append(args, "--listen-addr=127.0.0.1")
+			} else {
+				args = append(args, "--host=127.0.0.1")
+			}
+		}
 		args = append(args, fmt.Sprintf("--port=%d", port))
 		args = append(args, fmt.Sprintf("--http-port=%d", GetAdminUIPort(port)))
 		if locality := c.locality(nodes[i]); locality != "" {
