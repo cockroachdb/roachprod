@@ -9,6 +9,7 @@ import (
 var parameterRe = regexp.MustCompile(`{[^}]*}`)
 var pgURLRe = regexp.MustCompile(`{pgurl(:[-,0-9]+)?}`)
 var pgPortRe = regexp.MustCompile(`{pgport(:[-,0-9]+)?}`)
+var uiPortRe = regexp.MustCompile(`{uiport(:[-,0-9]+)?}`)
 var storeDirRe = regexp.MustCompile(`{store-dir}`)
 var logDirRe = regexp.MustCompile(`{log-dir}`)
 
@@ -16,6 +17,7 @@ type expander struct {
 	node    int
 	pgURLs  map[int]string
 	pgPorts map[int]string
+	uiPorts map[int]string
 }
 
 func (e *expander) maybeExpandMap(c *SyncedCluster, m map[int]string, nodeSpec string) (string, bool) {
@@ -68,6 +70,22 @@ func (e *expander) maybeExpandPgPort(c *SyncedCluster, s string) (string, bool) 
 	return e.maybeExpandMap(c, e.pgPorts, m[1])
 }
 
+func (e *expander) maybeExpandUiPort(c *SyncedCluster, s string) (string, bool) {
+	m := uiPortRe.FindStringSubmatch(s)
+	if m == nil {
+		return s, false
+	}
+
+	if e.uiPorts == nil {
+		e.uiPorts = make(map[int]string, len(c.VMs))
+		for _, i := range allNodes(len(c.VMs)) {
+			e.uiPorts[i] = fmt.Sprint(c.Impl.NodeUIPort(c, i))
+		}
+	}
+
+	return e.maybeExpandMap(c, e.uiPorts, m[1])
+}
+
 func (e *expander) maybeExpandStoreDir(c *SyncedCluster, s string) (string, bool) {
 	if !storeDirRe.MatchString(s) {
 		return s, false
@@ -88,6 +106,7 @@ func (e *expander) expand(c *SyncedCluster, arg string) string {
 		expanders := []expanderFunc{
 			e.maybeExpandPgURL,
 			e.maybeExpandPgPort,
+			e.maybeExpandUiPort,
 			e.maybeExpandStoreDir,
 			e.maybeExpandLogDir,
 		}

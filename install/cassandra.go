@@ -96,6 +96,10 @@ func (Cassandra) NodePort(c *SyncedCluster, index int) int {
 	return 9042
 }
 
+func (Cassandra) NodeUIPort(c *SyncedCluster, index int) int {
+	return 0 // unimplemented
+}
+
 func makeCassandraYAML(c *SyncedCluster) (string, error) {
 	ip, err := c.GetInternalIP(c.ServerNodes()[0])
 	if err != nil {
