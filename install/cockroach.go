@@ -457,6 +457,10 @@ func (Cockroach) NodePort(c *SyncedCluster, index int) int {
 	return port
 }
 
+func (cr Cockroach) NodeUIPort(c *SyncedCluster, index int) int {
+	return GetAdminUIPort(cr.NodePort(c, index))
+}
+
 func (r Cockroach) SQL(c *SyncedCluster, args []string) error {
 	if len(args) == 0 || len(c.Nodes) == 1 {
 		// If no arguments, we're going to get an interactive SQL shell. Require

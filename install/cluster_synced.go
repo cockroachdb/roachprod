@@ -31,6 +31,7 @@ type ClusterImpl interface {
 	LogDir(c *SyncedCluster, index int) string
 	NodeURL(c *SyncedCluster, host string, port int) string
 	NodePort(c *SyncedCluster, index int) int
+	NodeUIPort(c *SyncedCluster, index int) int
 }
 
 // A SyncedCluster is created from the information in the synced hosts file
