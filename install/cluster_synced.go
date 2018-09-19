@@ -261,6 +261,7 @@ while :; do
 
   if [ -n "${lastpid}" ]; then
     nc localhost %[1]d >/dev/null 2>&1
+    echo nc exited
   else
     sleep 1
   fi
@@ -275,6 +276,9 @@ done
 				return
 			}
 			// Give the session a valid stdin pipe so that nc won't exit immediately.
+			// When nc does exit, we write to stdout, which has a side effect of
+			// checking whether the stdout pipe has broken. This allows us to detect
+			// when the roachprod process is killed.
 			inPipe, err := session.StdinPipe()
 			if err != nil {
 				ch <- nodeMonitorInfo{nodes[i], err.Error()}
