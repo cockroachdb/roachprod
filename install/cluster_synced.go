@@ -360,12 +360,21 @@ func (c *SyncedCluster) Run(stdout, stderr io.Writer, nodes []int, title, cmd st
 		return nil, nil
 	})
 
-	if !stream {
-		for i, r := range results {
-			fmt.Fprintf(stdout, "  %2d: %s\n", nodes[i], r)
+	if stream {
+		err := errors[0]
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			// The command we ran exited with a non-zero code. Exit with the
+			// same code. No point in printing exitErr because all it will say
+			// is "failing exit code X". The failed command will almost
+			// certainly have printed a better error message.
+			os.Exit(exitErr.Sys().(syscall.WaitStatus).ExitStatus())
 		}
+		return err
 	}
 
+	for i, r := range results {
+		fmt.Fprintf(stdout, "  %2d: %s\n", nodes[i], r)
+	}
 	for _, err := range errors {
 		if err != nil {
 			return err
