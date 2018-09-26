@@ -140,7 +140,7 @@ func (c *SyncedCluster) Stop(sig int) {
 	})
 }
 
-func (c *SyncedCluster) Wipe() {
+func (c *SyncedCluster) Wipe(preserveCerts bool) {
 	display := fmt.Sprintf("%s: wiping", c.Name)
 	c.Stop(9)
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
@@ -153,14 +153,21 @@ func (c *SyncedCluster) Wipe() {
 		var cmd string
 		if c.IsLocal() {
 			// Not all shells like brace expansion, so we'll do it here
-			for _, dir := range []string{"certs*", "data"} {
+			dirs := []string{"data"}
+			if !preserveCerts {
+				dirs = append(dirs, "certs*")
+			}
+			for _, dir := range dirs {
 				cmd += fmt.Sprintf(`rm -fr ${HOME}/local/%d/%s ;`, c.Nodes[i], dir)
 			}
 		} else {
 			cmd = `find /mnt/data* -maxdepth 1 -type f -exec rm -f {} \; ;
 rm -fr /mnt/data*/{auxiliary,local,tmp,cassandra,cockroach,cockroach-temp*,mongo-data} \; ;
-rm -fr certs* ;
 `
+			if !preserveCerts {
+				cmd += `rm -fr certs* ;
+`
+			}
 		}
 		return session.CombinedOutput(cmd)
 	})

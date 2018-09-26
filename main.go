@@ -53,25 +53,26 @@ destroy the cluster.
 }
 
 var (
-	numNodes       int
-	numRacks       int
-	username       string
-	dryrun         bool
-	extendLifetime time.Duration
-	listDetails    bool
-	listJSON       bool
-	listMine       bool
-	clusterType    = "cockroach"
-	secure         = false
-	nodeEnv        = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
-	nodeArgs       []string
-	tag            string
-	external       = false
-	adminurlOpen   = false
-	useTreeDist    = true
-	encrypt        = false
-	quiet          = false
-	sig            = 9
+	numNodes          int
+	numRacks          int
+	username          string
+	dryrun            bool
+	extendLifetime    time.Duration
+	wipePreserveCerts bool
+	listDetails       bool
+	listJSON          bool
+	listMine          bool
+	clusterType       = "cockroach"
+	secure            = false
+	nodeEnv           = "COCKROACH_ENABLE_RPC_COMPRESSION=false"
+	nodeArgs          []string
+	tag               string
+	external          = false
+	adminurlOpen      = false
+	useTreeDist       = true
+	encrypt           = false
+	quiet             = false
+	sig               = 9
 )
 
 func sortedClusters() []string {
@@ -422,7 +423,7 @@ directory is removed.
 			if err != nil {
 				return err
 			}
-			c.Wipe()
+			c.Wipe(wipePreserveCerts)
 			for _, i := range c.Nodes {
 				err := os.RemoveAll(fmt.Sprintf(os.ExpandEnv("${HOME}/local/%d"), i))
 				if err != nil {
@@ -871,7 +872,7 @@ nodes.
 		if err != nil {
 			return err
 		}
-		c.Wipe()
+		c.Wipe(wipePreserveCerts)
 		return nil
 	}),
 }
@@ -1333,6 +1334,12 @@ func main() {
 		"racks", "r", 0, "the number of racks to partition the nodes into")
 
 	stopCmd.Flags().IntVar(&sig, "sig", 9, "signal to pass to kill.")
+
+	for _, cmd := range []*cobra.Command{
+		stopCmd, wipeCmd, testCmd,
+	} {
+		cmd.Flags().BoolVar(&wipePreserveCerts, "preserve-certs", false, "do not wipe certificates")
+	}
 
 	testCmd.Flags().DurationVarP(
 		&duration, "duration", "d", 5*time.Minute, "the duration to run each test")
