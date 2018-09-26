@@ -84,6 +84,10 @@ func (Cassandra) LogDir(c *SyncedCluster, index int) string {
 	panic("Cassandra.LogDir unimplemented")
 }
 
+func (Cassandra) CertsDir(c *SyncedCluster, index int) string {
+	panic("Cassandra.CertsDir unimplemented")
+}
+
 func (Cassandra) NodeURL(_ *SyncedCluster, host string, port int) string {
 	return fmt.Sprintf("'cassandra://%s:%d'", host, port)
 }

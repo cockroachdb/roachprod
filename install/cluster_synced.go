@@ -29,6 +29,7 @@ type ClusterImpl interface {
 	Start(c *SyncedCluster, extraArgs []string)
 	NodeDir(c *SyncedCluster, index int) string
 	LogDir(c *SyncedCluster, index int) string
+	CertsDir(c *SyncedCluster, index int) string
 	NodeURL(c *SyncedCluster, host string, port int) string
 	NodePort(c *SyncedCluster, index int) int
 	NodeUIPort(c *SyncedCluster, index int) int
@@ -1055,7 +1056,9 @@ func (c *SyncedCluster) stopLoad() {
 	})
 }
 
-func (c *SyncedCluster) Parallel(display string, count, concurrency int, fn func(i int) ([]byte, error)) {
+func (c *SyncedCluster) Parallel(
+	display string, count, concurrency int, fn func(i int) ([]byte, error),
+) {
 	if concurrency == 0 || concurrency > count {
 		concurrency = count
 	}

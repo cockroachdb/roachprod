@@ -12,6 +12,7 @@ var pgPortRe = regexp.MustCompile(`{pgport(:[-,0-9]+)?}`)
 var uiPortRe = regexp.MustCompile(`{uiport(:[-,0-9]+)?}`)
 var storeDirRe = regexp.MustCompile(`{store-dir}`)
 var logDirRe = regexp.MustCompile(`{log-dir}`)
+var certsDirRe = regexp.MustCompile(`{certs-dir}`)
 
 type expander struct {
 	node    int
@@ -20,7 +21,9 @@ type expander struct {
 	uiPorts map[int]string
 }
 
-func (e *expander) maybeExpandMap(c *SyncedCluster, m map[int]string, nodeSpec string) (string, bool) {
+func (e *expander) maybeExpandMap(
+	c *SyncedCluster, m map[int]string, nodeSpec string,
+) (string, bool) {
 	if nodeSpec == "" {
 		nodeSpec = "all"
 	} else {
@@ -100,6 +103,13 @@ func (e *expander) maybeExpandLogDir(c *SyncedCluster, s string) (string, bool) 
 	return c.Impl.LogDir(c, e.node), true
 }
 
+func (e *expander) maybeExpandCertsDir(c *SyncedCluster, s string) (string, bool) {
+	if !certsDirRe.MatchString(s) {
+		return s, false
+	}
+	return c.Impl.CertsDir(c, e.node), true
+}
+
 func (e *expander) expand(c *SyncedCluster, arg string) string {
 	return parameterRe.ReplaceAllStringFunc(arg, func(s string) string {
 		type expanderFunc func(*SyncedCluster, string) (string, bool)
@@ -109,6 +119,7 @@ func (e *expander) expand(c *SyncedCluster, arg string) string {
 			e.maybeExpandUiPort,
 			e.maybeExpandStoreDir,
 			e.maybeExpandLogDir,
+			e.maybeExpandCertsDir,
 		}
 		for _, f := range expanders {
 			s, expanded := f(c, s)
