@@ -21,6 +21,13 @@ sudo apt-get install -y cassandra;
 sudo service cassandra stop;
 `,
 
+	"confluent": `
+sudo apt-get update;
+sudo apt-get install -y default-jdk-headless;
+curl https://packages.confluent.io/archive/5.0/confluent-oss-5.0.0-2.11.tar.gz | sudo tar -C /usr/local -xz;
+sudo ln -s /usr/local/confluent-5.0.0 /usr/local/confluent;
+`,
+
 	"docker": `
 sudo apt-get update;
 sudo apt-get install  -y \
