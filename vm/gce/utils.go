@@ -31,6 +31,9 @@ fi
 sudo chmod 777 /mnt/data1
 # sshguard can prevent frequent ssh connections to the same host. Disable it.
 sudo service sshguard stop
+# increase the default maximum number of open file descriptors. Load generators
+# running a lot of concurrent workers bump into this often.
+sudo sh -c 'echo "* - nofile 65536" > /etc/security/limits.d/10-roachprod-nofiles.conf'
 sudo touch /mnt/data1/.roachprod-initialized
 `
 
