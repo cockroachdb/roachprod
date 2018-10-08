@@ -474,9 +474,18 @@ tar cf - .ssh/id_rsa .ssh/id_rsa.pub .ssh/authorized_keys
 	// (which is used in jepsen tests).
 	ips := make([]string, len(c.Nodes), len(c.Nodes)*2)
 	c.Parallel("retrieving hosts", len(c.Nodes), 0, func(i int) ([]byte, error) {
-		var err error
-		ips[i], err = c.GetInternalIP(c.Nodes[i])
-		return nil, errors.Wrapf(err, "pgurls")
+		for j := 0; j < 20 && ips[i] == ""; j++ {
+			var err error
+			ips[i], err = c.GetInternalIP(c.Nodes[i])
+			if err != nil {
+				return nil, errors.Wrapf(err, "pgurls")
+			}
+			time.Sleep(time.Second)
+		}
+		if ips[i] == "" {
+			return nil, fmt.Errorf("retrieved empty IP address")
+		}
+		return nil, nil
 	})
 	for _, i := range c.Nodes {
 		ips = append(ips, c.host(i))
