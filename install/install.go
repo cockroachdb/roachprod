@@ -21,6 +21,50 @@ sudo apt-get install -y cassandra;
 sudo service cassandra stop;
 `,
 
+	"charybdefs": `
+  thrift_dir="/opt/thrift"
+
+  if [ ! -f "/usr/bin/thrift" ]; then
+	sudo apt-get update;
+	sudo apt-get install -qy automake bison flex g++ git libboost-all-dev libevent-dev libssl-dev libtool make pkg-config python-setuptools libglib2.0-dev
+
+    sudo mkdir -p "${thrift_dir}"
+    sudo chmod 777 "${thrift_dir}"
+    cd "${thrift_dir}"
+    curl "http://www-eu.apache.org/dist/thrift/0.10.0/thrift-0.10.0.tar.gz" | sudo tar xvz --strip-components 1
+    sudo ./configure --prefix=/usr
+    sudo make -j$(nproc)
+    sudo make install
+    (cd "${thrift_dir}/lib/py" && sudo python setup.py install)
+  fi
+
+  charybde_dir="/opt/charybdefs"
+  nemesis_path="${charybde_dir}/charybdefs-nemesis"
+
+  if [ ! -f "${nemesis_path}" ]; then
+    sudo apt-get install -qy build-essential cmake libfuse-dev fuse
+    sudo rm -rf "${charybde_dir}" "${nemesis_path}" /usr/local/bin/charybdefs{,-nemesis}
+    sudo mkdir -p "${charybde_dir}"
+    sudo chmod 777 "${charybde_dir}"
+    git clone --depth 1 "https://github.com/scylladb/charybdefs.git" "${charybde_dir}"
+
+    cd "${charybde_dir}"
+    thrift -r --gen cpp server.thrift
+    cmake CMakeLists.txt
+    make -j$(nproc)
+
+    sudo modprobe fuse
+    sudo ln -s "${charybde_dir}/charybdefs" /usr/local/bin/charybdefs
+    cat > "${nemesis_path}" <<EOF
+#!/bin/bash
+cd /opt/charybdefs/cookbook
+./recipes "\$@"
+EOF
+    chmod +x "${nemesis_path}"
+	sudo ln -s "${nemesis_path}" /usr/local/bin/charybdefs-nemesis
+fi
+`,
+
 	"confluent": `
 sudo apt-get update;
 sudo apt-get install -y default-jdk-headless;
