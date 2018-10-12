@@ -59,8 +59,8 @@ func (o *providerOpts) ConfigureCreateFlags(flags *pflag.FlagSet) {
 		"Machine type (see https://aws.amazon.com/ec2/instance-types/)")
 
 	// The m5 devices only support EBS volumes, so we need a different instance type
-	// for directly-attached SSD support. This is 4 core, 30GB ram, 1T ssd.
-	flags.StringVar(&o.SSDMachineType, ProviderName+"-machine-type-ssd", "i3.xlarge",
+	// for directly-attached SSD support. This is 4 core, 16GB ram, 150GB ssd.
+	flags.StringVar(&o.SSDMachineType, ProviderName+"-machine-type-ssd", "m5d.xlarge",
 		"Machine type for --local-ssd (see https://aws.amazon.com/ec2/instance-types/)")
 
 	// The subnet actually controls placement into a particular AZ
