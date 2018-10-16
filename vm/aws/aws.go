@@ -3,6 +3,7 @@ package aws
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -20,7 +21,22 @@ const ProviderName = "aws"
 // if the aws tool is available on the local path.
 func init() {
 	if _, err := exec.LookPath("aws"); err == nil {
-		vm.Providers[ProviderName] = &Provider{}
+		// NB: This is a bit hacky, but using something like `aws iam get-user` is
+		// slow and not something we want to do at startup.
+		haveCredentials := func() bool {
+			const credFile = "${HOME}/.aws/credentials"
+			if _, err := os.Stat(os.ExpandEnv(credFile)); err == nil {
+				return true
+			}
+			if os.Getenv("AWS_ACCESS_KEY_ID") != "" {
+				return true
+			}
+			return false
+		}
+
+		if haveCredentials() {
+			vm.Providers[ProviderName] = &Provider{}
+		}
 	} else {
 		// TODO(bob): This breaks the use of `roachprod pgurl --external` to
 		// power roachtest's `(*cluster).Conn` and was failing the nightlies.
@@ -252,7 +268,10 @@ func (p *Provider) FindActiveAccount() (string, error) {
 		}
 	}
 	args := []string{"iam", "get-user"}
-	runJSONCommand(args, &userInfo)
+	err := runJSONCommand(args, &userInfo)
+	if err != nil {
+		return "", err
+	}
 	cachedActiveAccount = userInfo.User.UserName
 	return cachedActiveAccount, nil
 }
