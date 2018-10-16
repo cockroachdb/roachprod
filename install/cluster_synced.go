@@ -1012,6 +1012,7 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 		allArgs = []string{
 			"ssh",
 			fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.host(c.Nodes[0])),
+			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa"),
 			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
 			"-o", "StrictHostKeyChecking=no",
 		}
