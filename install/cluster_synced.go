@@ -1033,6 +1033,7 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 func (c *SyncedCluster) scp(src, dest string) error {
 	args := []string{
 		"scp", "-r", "-C",
+		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa"),
 		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
 		"-o", "StrictHostKeyChecking=no",
 		src, dest,
