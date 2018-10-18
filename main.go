@@ -887,6 +887,7 @@ WARNING: Reformatting will delete all existing data in the cluster.
 Filesystem options:
   ext4
   zfs
+  xfs
 
 When running with ZFS, you can create a snapshot of the filesystem's current
 state using the 'zfs snapshot' command:
@@ -916,6 +917,8 @@ the 'zfs rollback' command:
 			fsCmd = `sudo zpool create -f data1 -m /mnt/data1 /dev/sdb`
 		case "ext4":
 			fsCmd = `sudo mkfs.ext4 -F /dev/sdb && sudo mount -o discard,defaults /dev/sdb /mnt/data1`
+		case "xfs":
+			fsCmd = `sudo apt-get update && sudo apt-get install xfsprogs && sudo mkfs.xfs -f -n ftype=1 /dev/sdb && sudo mount -o inode64 /dev/sdb /mnt/data1`
 		default:
 			return fmt.Errorf("unknown filesystem %q", fs)
 		}
