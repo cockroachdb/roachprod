@@ -120,28 +120,55 @@ func (c *SyncedCluster) newSession(i int) (session, error) {
 	return newRemoteSession(c.user(i), c.host(i))
 }
 
-func (c *SyncedCluster) Stop(sig int) {
+func (c *SyncedCluster) Stop(sig int, wait bool) {
 	display := fmt.Sprintf("%s: stopping", c.Name)
+	if wait {
+		display += " and waiting"
+	}
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
 		session, err := c.newSession(c.Nodes[i])
 		if err != nil {
 			return nil, err
 		}
 		defer session.Close()
-		// NB: xargs --no-run-if-empty is not supported on OSX.
+
 		// NB: the awkward-looking `awk` invocation serves to avoid having the
 		// awk process match its own output from `ps`.
-		cmd := fmt.Sprintf(`ps axeww -o pid -o command | \
-  sed 's/export ROACHPROD=//g' | \
-  awk '/ROACHPROD=(%d%s)[ \/]/ { print $1 }' | xargs kill -%d || true;`,
-			c.Nodes[i], c.escapedTag(), sig)
+		cmd := fmt.Sprintf(`count=0
+while :; do
+  pids=$(ps axeww -o pid -o command | \
+    sed 's/export ROACHPROD=//g' | \
+    awk '/ROACHPROD=(%d%s)[ \/]/ { print $1 }')
+  if [ -z "${pids}" ]; then
+    break
+  fi
+`, c.Nodes[i], c.escapedTag())
+
+		if wait {
+			cmd += `
+  if [ ${count} -gt 0 ]; then
+    sleep 1
+  fi
+  ((count++))
+`
+		}
+
+		cmd += fmt.Sprintf(`
+  kill -%d ${pids}
+`, sig)
+
+		if !wait {
+			cmd += "  break\n"
+		}
+		cmd += "done\n"
+
 		return session.CombinedOutput(cmd)
 	})
 }
 
 func (c *SyncedCluster) Wipe() {
 	display := fmt.Sprintf("%s: wiping", c.Name)
-	c.Stop(9)
+	c.Stop(9, true /* wait */)
 	c.Parallel(display, len(c.Nodes), 0, func(i int) ([]byte, error) {
 		session, err := c.newSession(c.Nodes[i])
 		if err != nil {
