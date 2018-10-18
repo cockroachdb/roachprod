@@ -72,6 +72,7 @@ var (
 	encrypt        = false
 	quiet          = false
 	sig            = 9
+	wait           = false
 )
 
 func sortedClusters() []string {
@@ -775,7 +776,7 @@ cluster setting will be set to its value.
 }
 
 var stopCmd = &cobra.Command{
-	Use:   "stop <cluster> [--sig]",
+	Use:   "stop <cluster> [--sig] [--wait]",
 	Short: "stop nodes on a cluster",
 	Long: `Stop nodes on a cluster.
 
@@ -787,7 +788,10 @@ processes are killed with signal 9 (SIGKILL) giving them no chance for a gracefu
 exit.
 
 The --sig flag will pass a signal to kill to allow us finer control over how we
-shutdown cockroach.
+shutdown cockroach. The --wait flag causes stop to loop waiting for all
+processes with the ROACHPROD=<node> environment variable to exit. Note that
+stop will wait forever if you specify --wait with a non-terminating signal
+(e.g. SIGHUP).
 ` + tagHelp + `
 `,
 	Args: cobra.ExactArgs(1),
@@ -796,7 +800,7 @@ shutdown cockroach.
 		if err != nil {
 			return err
 		}
-		c.Stop(sig)
+		c.Stop(sig, wait)
 		return nil
 	}),
 }
@@ -1311,7 +1315,8 @@ func main() {
 	startCmd.Flags().IntVarP(&numRacks,
 		"racks", "r", 0, "the number of racks to partition the nodes into")
 
-	stopCmd.Flags().IntVar(&sig, "sig", 9, "signal to pass to kill.")
+	stopCmd.Flags().IntVar(&sig, "sig", sig, "signal to pass to kill")
+	stopCmd.Flags().BoolVar(&wait, "wait", wait, "wait for processes to exit")
 
 	testCmd.Flags().DurationVarP(
 		&duration, "duration", "d", 5*time.Minute, "the duration to run each test")
