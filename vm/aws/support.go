@@ -36,6 +36,12 @@ if [ "${disknum}" -eq "0" ]; then
   mkdir -p /mnt/data1
   chmod 777 /mnt/data1
 fi
+
+sudo apt-get update
+sudo apt-get install -qy chrony
+echo -e "\nserver 169.254.169.123 prefer iburst" | sudo tee -a /etc/chrony/chrony.conf
+sudo /etc/init.d/chrony restart
+
 sudo touch /mnt/data1/.roachprod-initialized
 `
 
