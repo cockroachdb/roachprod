@@ -3,6 +3,7 @@ package install
 import (
 	"context"
 	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 
@@ -28,14 +29,13 @@ type remoteSession struct {
 }
 
 func newRemoteSession(user, host string) (*remoteSession, error) {
-	ctx, cancel := context.WithCancel(context.Background())
-	cmd := exec.CommandContext(ctx,
-		"ssh",
-		user+"@"+host,
-		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa"),
-		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+	args := []string{
+		user + "@" + host,
 		"-o", "StrictHostKeyChecking=no",
-	)
+	}
+	args = append(args, sshAuthArgs...)
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, "ssh", args...)
 	return &remoteSession{cmd, cancel}, nil
 }
 
@@ -139,4 +139,18 @@ func (s *localSession) RequestPty() error {
 func (s *localSession) Close() error {
 	s.cancel()
 	return nil
+}
+
+var sshAuthArgs []string
+
+func init() {
+	paths := []string{
+		filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa"),
+		filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			sshAuthArgs = append(sshAuthArgs, "-i", p)
+		}
+	}
 }

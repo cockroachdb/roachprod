@@ -1039,10 +1039,9 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 		allArgs = []string{
 			"ssh",
 			fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.host(c.Nodes[0])),
-			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa"),
-			"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
 			"-o", "StrictHostKeyChecking=no",
 		}
+		allArgs = append(allArgs, sshAuthArgs...)
 		allArgs = append(allArgs, sshArgs...)
 		if len(args) > 0 {
 			allArgs = append(allArgs, fmt.Sprintf("export ROACHPROD=%d%s ;", c.Nodes[0], c.Tag))
@@ -1060,11 +1059,10 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 func (c *SyncedCluster) scp(src, dest string) error {
 	args := []string{
 		"scp", "-r", "-C",
-		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa"),
-		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
 		"-o", "StrictHostKeyChecking=no",
-		src, dest,
 	}
+	args = append(args, sshAuthArgs...)
+	args = append(args, src, dest)
 	cmd := exec.Command(args[0], args[1:]...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
