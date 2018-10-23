@@ -34,6 +34,7 @@ func newRemoteSession(user, host string) (*remoteSession, error) {
 		user+"@"+host,
 		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "id_rsa"),
 		"-i", filepath.Join(config.OSUser.HomeDir, ".ssh", "google_compute_engine"),
+		"-o" ,"UserKnownHostsFile=/dev/null",
 		"-o", "StrictHostKeyChecking=no",
 	)
 	return &remoteSession{cmd, cancel}, nil
