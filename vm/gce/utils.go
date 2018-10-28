@@ -36,6 +36,16 @@ sudo service sshguard stop
 # workers bump into this often.
 sudo sh -c 'echo "root - nofile 65536\n* - nofile 65536" > /etc/security/limits.d/10-roachprod-nofiles.conf'
 sudo touch /mnt/data1/.roachprod-initialized
+
+# Send TCP keepalives every minute since GCE will terminate idle connections
+# after 10m. Note that keepalives still need to be requested by the application
+# with the SO_KEEPALIVE socket option.
+cat <<EOF > /etc/sysctl.d/99-roachprod-tcp-keepalive.conf
+net.ipv4.tcp_keepalive_time=60
+net.ipv4.tcp_keepalive_intvl=60
+net.ipv4.tcp_keepalive_probes=5
+EOF
+sysctl --system  # reload sysctl settings
 `
 
 // write the startup script to a temp file.
