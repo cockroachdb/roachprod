@@ -134,15 +134,19 @@ func (c *SyncedCluster) Stop(sig int, wait bool) {
 
 		// NB: the awkward-looking `awk` invocation serves to avoid having the
 		// awk process match its own output from `ps`.
-		cmd := fmt.Sprintf(`count=0
+		cmd := fmt.Sprintf(`
+mkdir -p logs
+echo ">>> roachprod stop: $(date)" >> %[1]s/roachprod.log
+ps axeww -o pid -o command >> %[1]s/roachprod.log
+count=0
 while :; do
   pids=$(ps axeww -o pid -o command | \
     sed 's/export ROACHPROD=//g' | \
-    awk '/ROACHPROD=(%d%s)[ \/]/ { print $1 }')
+    awk '/ROACHPROD=(%[2]d%[3]s)[ \/]/ { print $1 }')
   if [ -z "${pids}" ]; then
     break
   fi
-`, c.Nodes[i], c.escapedTag())
+`, c.Impl.LogDir(c, c.Nodes[i]), c.Nodes[i], c.escapedTag())
 
 		if wait {
 			cmd += `

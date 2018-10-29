@@ -362,7 +362,13 @@ tar cvf certs.tar certs
 		// NB: this is awkward as when the process fails, the test runner will show an
 		// unhelpful empty error (since everything has been redirected away). This is
 		// unfortunately equally awkward to address.
-		cmd := "mkdir -p " + logDir + "; " + keyCmd +
+		cmd := "mkdir -p " + logDir + "; "
+		// TODO(peter): The ps and lslocks stuff is intended to debug why killing
+		// of a cockroach process sometimes doesn't release file locks immediately.
+		cmd += `echo ">>> roachprod start: $(date)" >> ` + logDir + "/roachprod.log; " +
+			`ps axeww -o pid -o command >> ` + logDir + "/roachprod.log; " +
+			`[ -x /usr/bin/lslocks ] && /usr/bin/lslocks >> ` + logDir + "/roachprod.log; "
+		cmd += keyCmd +
 			fmt.Sprintf(" export ROACHPROD=%d%s && ", nodes[i], c.Tag) +
 			c.Env + " " + binary + " start " + strings.Join(args, " ") +
 			" >> " + logDir + "/cockroach.stdout 2>> " + logDir + "/cockroach.stderr" +
