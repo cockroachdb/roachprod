@@ -32,6 +32,7 @@ type remoteSession struct {
 func newRemoteSession(user, host string) (*remoteSession, error) {
 	args := []string{
 		user + "@" + host,
+		"-q",
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "StrictHostKeyChecking=no",
 	}
