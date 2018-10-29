@@ -1039,6 +1039,7 @@ func (c *SyncedCluster) Ssh(sshArgs, args []string) error {
 		allArgs = []string{
 			"ssh",
 			fmt.Sprintf("%s@%s", c.user(c.Nodes[0]), c.host(c.Nodes[0])),
+			"-o", "UserKnownHostsFile=/dev/null",
 			"-o", "StrictHostKeyChecking=no",
 		}
 		allArgs = append(allArgs, sshAuthArgs()...)
