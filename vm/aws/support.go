@@ -44,6 +44,10 @@ echo -e "\nmakestep 0.1 3" | sudo tee -a /etc/chrony/chrony.conf
 sudo /etc/init.d/chrony restart
 sudo chronyc -a waitsync 30 0.01 | sudo tee -a /root/chrony.log
 
+# increase the default maximum number of open file descriptors for
+# root and non-root users. Load generators running a lot of concurrent
+# workers bump into this often.
+sudo sh -c 'echo "root - nofile 65536\n* - nofile 65536" > /etc/security/limits.d/10-roachprod-nofiles.conf'
 sudo touch /mnt/data1/.roachprod-initialized
 `
 
