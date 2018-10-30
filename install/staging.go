@@ -65,7 +65,7 @@ func StageCockroachRelease(c *SyncedCluster, version string) error {
 		return err
 	}
 	binURL.Path += fmt.Sprintf("cockroach-%s.linux-amd64.tgz", version)
-	fmt.Println("Resolved release url for cockroach version %s: %s", version, binURL)
+	fmt.Printf("Resolved release url for cockroach version %s: %s\n", version, binURL)
 
 	// This command incantation:
 	// - Creates a temporary directory on the remote machine
