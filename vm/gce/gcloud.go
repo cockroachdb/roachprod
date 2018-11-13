@@ -226,7 +226,7 @@ func (p *Provider) Create(names []string, opts vm.CreateOpts) error {
 		"--subnet", "default",
 		"--maintenance-policy", "MIGRATE",
 		"--scopes", "default,storage-rw",
-		"--image", "ubuntu-1604-xenial-v20181023",
+		"--image", "ubuntu-1604-xenial-v20181030",
 		"--image-project", "ubuntu-os-cloud",
 		"--boot-disk-size", "10",
 		"--boot-disk-type", "pd-ssd",
