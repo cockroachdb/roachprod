@@ -16,28 +16,41 @@ import (
 // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/nvme-ebs-volumes.html
 const awsStartupScript = `#!/usr/bin/env bash
 set -x
-disknum=0
+sudo apt-get update
+sudo apt-get install -qy --no-install-recommends mdadm
+
+disks=()
+mountpoint="/mnt/data1"
 for d in $(ls /dev/nvme?n1); do
   if ! mount | grep ${d}; then
-    let "disknum++"
+    disks+=("${d}")
     echo "Disk ${d} not mounted, creating..."
-    mountpoint="/mnt/data${disknum}"
-    mkdir -p "${mountpoint}"
-    mkfs.ext4 ${d}
-    mount -o discard,defaults ${d} ${mountpoint}
-    chmod 777 ${mountpoint}
-    echo "${d} ${mountpoint} ext4 discard,defaults 1 1" | tee -a /etc/fstab
   else
-    echo "Disk ${disknum}: ${d} already mounted, skipping..."
+    echo "Disk ${d} already mounted, skipping..."
   fi
 done
-if [ "${disknum}" -eq "0" ]; then
-  echo "No disks mounted, creating /mnt/data1"
-  mkdir -p /mnt/data1
-  chmod 777 /mnt/data1
+if [ "${#disks[@]}" -eq "0" ]; then
+  echo "No disks mounted, creating ${mountpoint}"
+  mkdir -p ${mountpoint}
+  chmod 777 ${mountpoint}
+elif [ "${#disks[@]}" -eq "1" ]; then
+  echo "One disk mounted, creating ${mountpoint}"
+  mkdir -p ${mountpoint}
+  mkfs.ext4 -E nodiscard ${disks[1]}
+  mount -o discard,defaults ${disks[1]} ${mountpoint}
+  chmod 777 ${mountpoint}
+  echo "${disks[1]} ${mountpoint} ext4 discard,defaults 1 1" | tee -a /etc/fstab
+else
+  echo "${#disks[@]} disks mounted, creating ${mountpoint} using RAID 0"
+  mkdir -p ${mountpoint}
+  raiddisk="/dev/md0"
+  mdadm --create ${raiddisk} --level=0 --raid-devices=${#disks[@]} "${disks[@]}"
+  mkfs.ext4 -E nodiscard ${raiddisk}
+  mount -o discard,defaults ${raiddisk} ${mountpoint}
+  chmod 777 ${mountpoint}
+  echo "${raiddisk} ${mountpoint} ext4 discard,defaults 1 1" | tee -a /etc/fstab
 fi
 
-sudo apt-get update
 sudo apt-get install -qy chrony
 echo -e "\nserver 169.254.169.123 prefer iburst" | sudo tee -a /etc/chrony/chrony.conf
 echo -e "\nmakestep 0.1 3" | sudo tee -a /etc/chrony/chrony.conf
