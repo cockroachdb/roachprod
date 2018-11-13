@@ -104,10 +104,15 @@ func (vl List) Zones() []string {
 
 // CreateOpts is the set of options when creating VMs.
 type CreateOpts struct {
-	UseLocalSSD    bool
 	Lifetime       time.Duration
 	GeoDistributed bool
 	VMProviders    []string
+	SSDOpts        struct {
+		UseLocalSSD bool
+		// NoExt4Barrier, if set, makes the "-o nobarrier" flag be used when
+		// mounting the SSD. Ignored if UseLocalSSD is not set.
+		NoExt4Barrier bool
+	}
 }
 
 // A hook point for Providers to supply additional, provider-specific flags to various

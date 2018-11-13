@@ -480,7 +480,7 @@ func (p *Provider) runInstance(name string, zone string, opts vm.CreateOpts) err
 	}
 
 	var machineType string
-	if opts.UseLocalSSD {
+	if opts.SSDOpts.UseLocalSSD {
 		machineType = p.opts.SSDMachineType
 	} else {
 		machineType = p.opts.MachineType
@@ -534,7 +534,7 @@ func (p *Provider) runInstance(name string, zone string, opts vm.CreateOpts) err
 	}
 
 	// The local NVMe devices are automatically mapped.  Otherwise, we need to map an EBS data volume.
-	if !opts.UseLocalSSD {
+	if !opts.SSDOpts.UseLocalSSD {
 		args = append(args,
 			"--block-device-mapping",
 			// Size is measured in GB.  gp2 type derives guaranteed iops from size.

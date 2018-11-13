@@ -202,13 +202,6 @@ func (p *Provider) Create(names []string, opts vm.CreateOpts) error {
 			"`roachprod gc --gce-project=%s` cronjob\n", p.opts.Project)
 	}
 
-	// Create GCE startup script file.
-	filename, err := writeStartupScript()
-	if err != nil {
-		return errors.Wrapf(err, "could not write GCE startup script to temp file")
-	}
-	defer os.Remove(filename)
-
 	if !opts.GeoDistributed {
 		p.opts.Zones = []string{p.opts.Zones[0]}
 	}
@@ -239,10 +232,22 @@ func (p *Provider) Create(names []string, opts vm.CreateOpts) error {
 		args = append(args, "--service-account", p.opts.ServiceAccount)
 	}
 
+	extraMountOpts := ""
 	// Dynamic args.
-	if opts.UseLocalSSD {
+	if opts.SSDOpts.UseLocalSSD {
 		args = append(args, "--local-ssd", "interface=SCSI")
+		if opts.SSDOpts.NoExt4Barrier {
+			extraMountOpts = "nobarrier"
+		}
 	}
+
+	// Create GCE startup script file.
+	filename, err := writeStartupScript(extraMountOpts)
+	if err != nil {
+		return errors.Wrapf(err, "could not write GCE startup script to temp file")
+	}
+	defer os.Remove(filename)
+
 	args = append(args, "--machine-type", p.opts.MachineType)
 	args = append(args, "--labels", fmt.Sprintf("lifetime=%s", opts.Lifetime))
 
