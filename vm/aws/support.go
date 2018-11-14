@@ -36,10 +36,11 @@ if [ "${#disks[@]}" -eq "0" ]; then
 elif [ "${#disks[@]}" -eq "1" ]; then
   echo "One disk mounted, creating ${mountpoint}"
   mkdir -p ${mountpoint}
-  mkfs.ext4 -E nodiscard ${disks[1]}
-  mount -o discard,defaults ${disks[1]} ${mountpoint}
+  disk=${disks[0]}
+  mkfs.ext4 -E nodiscard ${disk}
+  mount -o discard,defaults ${disk} ${mountpoint}
   chmod 777 ${mountpoint}
-  echo "${disks[1]} ${mountpoint} ext4 discard,defaults 1 1" | tee -a /etc/fstab
+  echo "${disk} ${mountpoint} ext4 discard,defaults 1 1" | tee -a /etc/fstab
 else
   echo "${#disks[@]} disks mounted, creating ${mountpoint} using RAID 0"
   mkdir -p ${mountpoint}
