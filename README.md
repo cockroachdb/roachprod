@@ -1,5 +1,11 @@
 ## roachprod
 
+⚠️⚠️⚠️ 
+
+**This repo is frozen. The code has moved to https://github.com/cockroachdb/cockroach/tree/master/pkg/cmd/roachprod**
+
+⚠️⚠️⚠️
+
 ⚠️ roachprod is an **internal** tool for creating and testing
 CockroachDB clusters. Use at your own risk! ⚠️
 
